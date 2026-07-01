@@ -1,0 +1,17 @@
+# Gowin build artifacts
+*.json
+*.fs
+!bin/glider_tang.fs
+*.log
+
+# Simulation artifacts
+sim/obj/
+sim/obj_dir/
+sim/sim
+sim/trace.vcd
+sim/frame_*.bmp
+*.vcd
+sim_elf
+
+# OS artifacts
+.DS_Store
