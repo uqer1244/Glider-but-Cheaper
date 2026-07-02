@@ -67,13 +67,11 @@ Signals are mapped to PMOD headers on the Tang Primer 20K Dock board for easy wi
 | **EPD_SD[14]**| `L13`| Source Data Bit 14 |
 | **EPD_SD[15]**| `C10`| Source Data Bit 15 |
 
-#### 2. PMIC & Configuration Interface (PMOD2 Row 3/4)
-| Signal Name | FPGA Pin | Description |
-| :--- | :--- | :--- |
-| **PMIC_SCL** | `D10` | I2C Clock (with internal Pull-up) |
-| **PMIC_SDA** | `B12` | I2C Data (with internal Pull-up) |
-| **PMIC_WAKEUP**| `A14`| PMIC Wakeup pin |
-| **PMIC_PWRUP** | `B13`| PMIC Power-up pin |
+#### 2. FPGA-to-XIAO PMIC Handshake Interface (PMOD2 Row 4)
+| Signal Name | FPGA Pin | Direction | Description |
+| :--- | :--- | :--- | :--- |
+| **PMIC_READY** | `A14` | Input | High indicates E-ink high voltage rails are stable |
+| **REFRESH_DONE**| `B13`| Output | High indicates FPGA EPD scan is idle (refresh complete) |
 
 #### 3. CSR SPI Host Interface (PMOD4)
 | Signal Name | FPGA Pin | Description |
@@ -193,13 +191,11 @@ Tang Primer 20K Dock 보드의 PMOD 포트에 맞춘 연결 핀 맵핑 테이블
 | **EPD_SD[14]**| `L13`| Source Data Bit 14 |
 | **EPD_SD[15]**| `C10`| Source Data Bit 15 |
 
-#### 2. PMIC 전원 제어 인터페이스 (PMOD2 Row 3/4)
-| 신호 이름 | FPGA 핀번호 | 설명 |
-| :--- | :--- | :--- |
-| **PMIC_SCL** | `D10` | I2C Clock (내부 풀업 활성화됨) |
-| **PMIC_SDA** | `B12` | I2C Data (내부 풀업 활성화됨) |
-| **PMIC_WAKEUP**| `A14`| PMIC Wakeup 핀 |
-| **PMIC_PWRUP** | `B13`| PMIC Power-up 핀 |
+#### 2. FPGA-XIAO PMIC 핸드셰이크 인터페이스 (PMOD2 Row 4)
+| 신호 이름 | FPGA 핀번호 | 방향 | 설명 |
+| :--- | :--- | :--- | :--- |
+| **PMIC_READY** | `A14` | 입력 | High일 때 E-ink 고전압 출력이 안정되었음을 의미 |
+| **REFRESH_DONE**| `B13`| 출력 | High일 때 FPGA의 EPD 스캔이 유휴(Idle) 상태임을 의미 |
 
 #### 3. CSR SPI 통신 인터페이스 (PMOD4)
 | 신호 이름 | FPGA 핀번호 | 설명 |

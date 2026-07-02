@@ -26,8 +26,7 @@ SRCS        = $(RTL_DIR)/top.v \
               $(RTL_DIR)/vin.v \
               $(RTL_DIR)/mig_wrapper.v \
               $(RTL_DIR)/bi_fifo.v \
-              $(RTL_DIR)/bo_fifo.v \
-              $(RTL_DIR)/tps65185_ctrl.v
+              $(RTL_DIR)/bo_fifo.v
 
 CST_FILE    = constraints/gowin_constraints.cst
 DEVICE      = GW2A-LV18PG256C8/I7

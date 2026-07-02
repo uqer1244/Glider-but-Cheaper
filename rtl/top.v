@@ -55,11 +55,9 @@ module top(
     input wire SPI_SCK,
     input wire SPI_MOSI,
     output wire SPI_MISO,
-    // PMIC I2C & Control interface
-    inout wire PMIC_SCL,
-    inout wire PMIC_SDA,
-    output wire PMIC_WAKEUP,
-    output wire PMIC_PWRUP,
+    // Handshake interface
+    input wire PMIC_READY,
+    output wire REFRESH_DONE,
     // DEBUG
     output wire LED
     );
@@ -390,8 +388,20 @@ module top(
     );
     assign pix_write_valid = !bo_fifo_empty;
     
+    // Synchronize PMIC_READY input to EPD clock domain
+    wire pmic_ready_sync;
+    mu_dsync pmic_ready_sync_inst (
+        .iclk(1'b0), // external/async input
+        .in(PMIC_READY),
+        .oclk(clk_epdc),
+        .out(pmic_ready_sync)
+    );
+
     // EPD controller
-    wire sys_ready = ddr_calib_done_epdc;
+    wire sys_ready = ddr_calib_done_epdc && pmic_ready_sync;
+    
+    // Drive REFRESH_DONE (HIGH when idle, LOW when actively scanning)
+    assign REFRESH_DONE = (dbg_scan_state == 2'b00);
 
     wire spi_ncs;
     wire spi_sck;
@@ -558,21 +568,7 @@ module top(
 
     assign LED = |(epd_sd_caster[7:0]);
 
-    // TPS65185 PMIC controller instantiation
-    tps65185_ctrl #(
-        .SYS_CLK_FREQ(27000000), // 27 MHz
-        .I2C_CLK_FREQ(100000),   // 100 kHz
-        .VADJ_VAL(8'h14),        // VCOM = -1.50V
-        .ENABLE_VAL(8'h80)       // VCOM_EN = 1
-    ) tps65185_pmic_ctrl (
-        .clk(clk_sys),
-        .rst(sys_rst),
-        .PMIC_SCL(PMIC_SCL),
-        .PMIC_SDA(PMIC_SDA),
-        .PMIC_WAKEUP(PMIC_WAKEUP),
-        .PMIC_PWRUP(PMIC_PWRUP),
-        .done()
-    );
+
 
 endmodule
 `default_nettype wire
