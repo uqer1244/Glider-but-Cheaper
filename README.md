@@ -19,6 +19,7 @@ The original Glider board uses a Xilinx Spartan-6 LX16 FPGA, DDR3 framebuffer, a
                                     └───(DDR3)────┘
                                    (Framebuffer)
 ```
+*Note: For the E-ink PMIC, you can salvage/isolate the PMIC portion of the Seeed Studio "XIAO ePaper Display Board EE03" by bypassing its onboard IT8951 TCON chip and using only its TPS65185 PMIC circuitry.*
 
 ### Key Features
 - **Ultra-low latency**: Processing delay of <20 us.
@@ -32,7 +33,7 @@ The original Glider board uses a Xilinx Spartan-6 LX16 FPGA, DDR3 framebuffer, a
 ### Hardware Requirements
 1. **Sipeed Tang Primer 20K Core Board & Dock Baseboard**
 2. **E-ink Screen**: E-ink panels with parallel interface (e.g., ED133UT2, ED060XH2, etc.).
-3. **PMIC Board**: TPS65185 PMIC for generating E-ink high voltages (+/-15V, VGH/VGL).
+3. **PMIC Board**: TPS65185 PMIC for generating E-ink high voltages (+/-15V, VGH/VGL). *(Note: Can be salvaged from the Seeed Studio XIAO ePaper EE03 board by utilizing only its PMIC section and bypassing the onboard TCON).*
 
 ---
 
@@ -144,6 +145,7 @@ A complete simulation model is provided using Verilator and SDL2 to visualize E-
                                         └───(DDR3)────┘
                                        (프레임버퍼)
 ```
+*참고: E-ink PMIC 전원부의 경우, Seeed Studio "XIAO ePaper Display Board EE03" 모듈의 내장 IT8951 TCON 칩을 우회(Bypass)하고 온보드 TPS65185 PMIC 회로 부분만 활용하여 전원 공급용으로 사용할 수 있습니다.*
 
 ### 주요 기능 및 특징
 - **초저지연**: 20 us 미만의 극도로 짧은 프로세싱 지연시간.
@@ -157,7 +159,7 @@ A complete simulation model is provided using Verilator and SDL2 to visualize E-
 ### 하드웨어 준비물
 1. **Sipeed Tang Primer 20K Core Board & Dock Baseboard**
 2. **E-ink 스크린**: 병렬 인터페이스 지원 EPD 패널 (예: ED133UT2, ED060XH2 등)
-3. **PMIC 보드**: E-ink 구동을 위한 고전압(+/-15V, VGH/VGL) 생성용 TPS65185 모듈
+3. **PMIC 보드**: E-ink 구동을 위한 고전압(+/-15V, VGH/VGL) 생성용 TPS65185 모듈 *(참고: Seeed Studio XIAO ePaper EE03 보드에서 TCON부를 우회하고 PMIC부 회로만 활용하여 자작 가능)*
 
 ---
 
