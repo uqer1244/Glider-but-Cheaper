@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW2A-18C" pn="GW2A-LV18PG256C8/I7">gw2a18c-011</Device>
+    <FileList>
+        <File path="rtl/top.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/caster.v" type="file.verilog" enable="1"/>
+        <File path="rtl/pixel_processing.v" type="file.verilog" enable="1"/>
+        <File path="rtl/wvfmlut.v" type="file.verilog" enable="1"/>
+        <File path="rtl/csr.v" type="file.verilog" enable="1"/>
+        <File path="rtl/degamma.v" type="file.verilog" enable="1"/>
+        <File path="rtl/bayer_dithering.v" type="file.verilog" enable="1"/>
+        <File path="rtl/blue_noise_dithering.v" type="file.verilog" enable="1"/>
+        <File path="rtl/line_reverse.v" type="file.verilog" enable="1"/>
+        <File path="rtl/adder_sat.v" type="file.verilog" enable="1"/>
+        <File path="rtl/adder_sat_8.v" type="file.verilog" enable="1"/>
+        <File path="rtl/mulib/rtl/baseip/mu_ram_2rw.v" type="file.verilog" enable="1"/>
+        <File path="rtl/mulib/rtl/baseip/generic/mu_dsync.v" type="file.verilog" enable="1"/>
+        <File path="rtl/mulib/rtl/baseip/generic/mu_dbsync.v" type="file.verilog" enable="1"/>
+        <File path="rtl/memif.v" type="file.verilog" enable="1"/>
+        <File path="rtl/timing_generator.v" type="file.verilog" enable="1"/>
+        <File path="rtl/sysclock.v" type="file.verilog" enable="1"/>
+        <File path="rtl/vin.v" type="file.verilog" enable="1"/>
+        <File path="rtl/mig_wrapper.v" type="file.verilog" enable="1"/>
+        <File path="rtl/bi_fifo.v" type="file.verilog" enable="1"/>
+        <File path="rtl/bo_fifo.v" type="file.verilog" enable="1"/>
+        <File path="constraints/gowin_constraints.cst" type="file.cst" enable="1"/>
+    </FileList>
+    <OptionList>
+        <Option type="use_sspi_as_regular_io" value="1"/>
+        <Option type="use_mspi_as_regular_io" value="1"/>
+    </OptionList>
+</Project>

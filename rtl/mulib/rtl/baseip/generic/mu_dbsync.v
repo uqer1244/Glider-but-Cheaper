@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
-`include "mu_defines.vh"
+// `include "mu_defines.vh" // Unused, commented out to avoid Gowin EDA include path errors
+
 //
 // mu_dbsync.v: Data bus synchronizer
 //

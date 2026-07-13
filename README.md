@@ -40,46 +40,50 @@ The original Glider board uses a Xilinx Spartan-6 LX16 FPGA, DDR3 framebuffer, a
 ### Pin Mapping Guide (Dock Board PMOD Connectors)
 Signals are mapped to PMOD headers on the Tang Primer 20K Dock board for easy wiring:
 
-#### 1. EPD Parallel Control Interface (PMOD1, PMOD2, PMOD3)
+#### 1. EPD Parallel Control Interface (PMOD2)
 | Signal Name | FPGA Pin | Description |
 | :--- | :--- | :--- |
-| **EPD_GDOE** | `B14` | Gate Driver Output Enable |
-| **EPD_GDCLK**| `A15` | Gate Driver Clock |
-| **EPD_GDSP** | `D14` | Gate Driver Start Pulse |
-| **EPD_SDCLK**| `E15` | Source Driver Clock |
-| **EPD_SDLE** | `L9`  | Source Driver Latch Enable |
-| **EPD_SDOE** | `N8`  | Source Driver Output Enable |
-| **EPD_SDCE0**| `N9`  | Source Driver Chip Enable 0 |
-| **EPD_SD[0]**| `T12` | Source Data Bit 0 |
-| **EPD_SD[1]**| `T11` | Source Data Bit 1 |
-| **EPD_SD[2]**| `P11` | Source Data Bit 2 |
-| **EPD_SD[3]**| `R11` | Source Data Bit 3 |
-| **EPD_SD[4]**| `M15` | Source Data Bit 4 |
-| **EPD_SD[5]**| `M14` | Source Data Bit 5 |
-| **EPD_SD[6]**| `J16` | Source Data Bit 6 |
-| **EPD_SD[7]**| `J14` | Source Data Bit 7 |
-| **EPD_SD[8]**| `F14` | Source Data Bit 8 |
-| **EPD_SD[9]**| `F16` | Source Data Bit 9 |
-| **EPD_SD[10]**| `G15`| Source Data Bit 10 |
-| **EPD_SD[11]**| `G14`| Source Data Bit 11 |
-| **EPD_SD[12]**| `F13`| Source Data Bit 12 |
-| **EPD_SD[13]**| `G12`| Source Data Bit 13 |
-| **EPD_SD[14]**| `L13`| Source Data Bit 14 |
-| **EPD_SD[15]**| `C10`| Source Data Bit 15 |
+| **EPD_GDOE** | `B14` | Gate Driver Output Enable (PMOD2 Pin 3) |
+| **EPD_GDCLK**| `A15` | Gate Driver Clock (PMOD2 Pin 4) |
+| **EPD_GDSP** | `D14` | Gate Driver Start Pulse (PMOD2 Pin 1) |
+| **EPD_SDCLK**| `E15` | Source Driver Clock (PMOD2 Pin 2) |
+| **EPD_SDLE** | `B12` | Source Driver Latch Enable (PMOD2 Pin 9) |
+| **EPD_SDOE** | `C12` | Source Driver Output Enable (PMOD2 Pin 10) |
+| **EPD_SDCE0**| `B13` | Source Driver Chip Enable 0 (PMOD2 Pin 7) |
 
-#### 2. FPGA-to-XIAO PMIC Handshake Interface (PMOD2 Row 4)
+#### 2. EPD Parallel Data Interface (PMOD0 & PMOD1)
+| Signal Name | FPGA Pin | Description |
+| :--- | :--- | :--- |
+| **EPD_SD[0]**| `T12` | Source Data Bit 0 (PMOD1 Pin 3) |
+| **EPD_SD[1]**| `T11` | Source Data Bit 1 (PMOD1 Pin 1) |
+| **EPD_SD[2]**| `P11` | Source Data Bit 2 (PMOD1 Pin 2) |
+| **EPD_SD[3]**| `R11` | Source Data Bit 3 (PMOD1 Pin 4) |
+| **EPD_SD[4]**| `M15` | Source Data Bit 4 (PMOD1 Pin 8) |
+| **EPD_SD[5]**| `M14` | Source Data Bit 5 (PMOD1 Pin 7) |
+| **EPD_SD[6]**| `J16` | Source Data Bit 6 (PMOD1 Pin 10) |
+| **EPD_SD[7]**| `J14` | Source Data Bit 7 (PMOD1 Pin 9) |
+| **EPD_SD[8]**| `R8`  | Source Data Bit 8 (PMOD0 Pin 3) |
+| **EPD_SD[9]**| `T6`  | Source Data Bit 9 (PMOD0 Pin 1) |
+| **EPD_SD[10]**| `P6` | Source Data Bit 10 (PMOD0 Pin 2) |
+| **EPD_SD[11]**| `T7` | Source Data Bit 11 (PMOD0 Pin 4) |
+| **EPD_SD[12]**| `P8` | Source Data Bit 12 (PMOD0 Pin 8) |
+| **EPD_SD[13]**| `T8` | Source Data Bit 13 (PMOD0 Pin 7) |
+| **EPD_SD[14]**| `T9` | Source Data Bit 14 (PMOD0 Pin 10) |
+| **EPD_SD[15]**| `P9` | Source Data Bit 15 (PMOD0 Pin 9) |
+
+#### 3. FPGA-to-XIAO PMIC Handshake Interface (PMOD3 Pins 7, 8)
 | Signal Name | FPGA Pin | Direction | Description |
 | :--- | :--- | :--- | :--- |
-| **PMIC_READY** | `A14` | Input | High indicates E-ink high voltage rails are stable |
-| **REFRESH_DONE**| `B13`| Output | High indicates FPGA EPD scan is idle (refresh complete) |
+| **PMIC_READY** | `N7`  | Input | High indicates E-ink high voltage rails are stable (PMOD3 Pin 8) |
+| **REFRESH_DONE**| `N9` | Output | High indicates FPGA EPD scan is idle (refresh complete) (PMOD3 Pin 7) |
 
-#### 3. CSR SPI Host Interface (PMOD4)
+#### 4. CSR SPI Host Interface (PMOD3 Pins 1, 2, 3, 4)
 | Signal Name | FPGA Pin | Description |
 | :--- | :--- | :--- |
-| **SPI_CS**   | `N6`  | Chip Select |
-| **SPI_SCK**  | `D11` | SPI Clock |
-| **SPI_MOSI** | `A11` | Master Out Slave In |
-| **SPI_MISO** | `B11` | Master In Slave Out |
+| **SPI_CS**   | `N6`  | Chip Select (PMOD3 Pin 3) |
+| **SPI_SCK**  | `D11` | SPI Clock (PMOD3 Pin 4) |
+| **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 Pin 1) |
+| **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 Pin 2) |
 
 ---
 
@@ -164,46 +168,50 @@ A complete simulation model is provided using Verilator and SDL2 to visualize E-
 ### 핀 맵핑 가이드 (Dock 보드 PMOD 커넥터 연결)
 Tang Primer 20K Dock 보드의 PMOD 포트에 맞춘 연결 핀 맵핑 테이블입니다:
 
-#### 1. EPD 병렬 제어 인터페이스 (PMOD1, PMOD2, PMOD3)
+#### 1. EPD 병렬 제어 인터페이스 (PMOD2)
 | 신호 이름 | FPGA 핀번호 | 설명 |
 | :--- | :--- | :--- |
-| **EPD_GDOE** | `B14` | Gate Driver Output Enable |
-| **EPD_GDCLK**| `A15` | Gate Driver Clock |
-| **EPD_GDSP** | `D14` | Gate Driver Start Pulse |
-| **EPD_SDCLK**| `E15` | Source Driver Clock |
-| **EPD_SDLE** | `L9`  | Source Driver Latch Enable |
-| **EPD_SDOE** | `N8`  | Source Driver Output Enable |
-| **EPD_SDCE0**| `N9`  | Source Driver Chip Enable 0 |
-| **EPD_SD[0]**| `T12` | Source Data Bit 0 |
-| **EPD_SD[1]**| `T11` | Source Data Bit 1 |
-| **EPD_SD[2]**| `P11` | Source Data Bit 2 |
-| **EPD_SD[3]**| `R11` | Source Data Bit 3 |
-| **EPD_SD[4]**| `M15` | Source Data Bit 4 |
-| **EPD_SD[5]**| `M14` | Source Data Bit 5 |
-| **EPD_SD[6]**| `J16` | Source Data Bit 6 |
-| **EPD_SD[7]**| `J14` | Source Data Bit 7 |
-| **EPD_SD[8]**| `F14` | Source Data Bit 8 |
-| **EPD_SD[9]**| `F16` | Source Data Bit 9 |
-| **EPD_SD[10]**| `G15`| Source Data Bit 10 |
-| **EPD_SD[11]**| `G14`| Source Data Bit 11 |
-| **EPD_SD[12]**| `F13`| Source Data Bit 12 |
-| **EPD_SD[13]**| `G12`| Source Data Bit 13 |
-| **EPD_SD[14]**| `L13`| Source Data Bit 14 |
-| **EPD_SD[15]**| `C10`| Source Data Bit 15 |
+| **EPD_GDOE** | `B14` | Gate Driver Output Enable (PMOD2 Pin 3) |
+| **EPD_GDCLK**| `A15` | Gate Driver Clock (PMOD2 Pin 4) |
+| **EPD_GDSP** | `D14` | Gate Driver Start Pulse (PMOD2 Pin 1) |
+| **EPD_SDCLK**| `E15` | Source Driver Clock (PMOD2 Pin 2) |
+| **EPD_SDLE** | `B12` | Source Driver Latch Enable (PMOD2 Pin 9) |
+| **EPD_SDOE** | `C12` | Source Driver Output Enable (PMOD2 Pin 10) |
+| **EPD_SDCE0**| `B13` | Source Driver Chip Enable 0 (PMOD2 Pin 7) |
 
-#### 2. FPGA-XIAO PMIC 핸드셰이크 인터페이스 (PMOD2 Row 4)
+#### 2. EPD 병렬 데이터 인터페이스 (PMOD0 & PMOD1)
+| 신호 이름 | FPGA 핀번호 | 설명 |
+| :--- | :--- | :--- |
+| **EPD_SD[0]**| `T12` | Source Data Bit 0 (PMOD1 Pin 3) |
+| **EPD_SD[1]**| `T11` | Source Data Bit 1 (PMOD1 Pin 1) |
+| **EPD_SD[2]**| `P11` | Source Data Bit 2 (PMOD1 Pin 2) |
+| **EPD_SD[3]**| `R11` | Source Data Bit 3 (PMOD1 Pin 4) |
+| **EPD_SD[4]**| `M15` | Source Data Bit 4 (PMOD1 Pin 8) |
+| **EPD_SD[5]**| `M14` | Source Data Bit 5 (PMOD1 Pin 7) |
+| **EPD_SD[6]**| `J16` | Source Data Bit 6 (PMOD1 Pin 10) |
+| **EPD_SD[7]**| `J14` | Source Data Bit 7 (PMOD1 Pin 9) |
+| **EPD_SD[8]**| `R8`  | Source Data Bit 8 (PMOD0 Pin 3) |
+| **EPD_SD[9]**| `T6`  | Source Data Bit 9 (PMOD0 Pin 1) |
+| **EPD_SD[10]**| `P6` | Source Data Bit 10 (PMOD0 Pin 2) |
+| **EPD_SD[11]**| `T7` | Source Data Bit 11 (PMOD0 Pin 4) |
+| **EPD_SD[12]**| `P8` | Source Data Bit 12 (PMOD0 Pin 8) |
+| **EPD_SD[13]**| `T8` | Source Data Bit 13 (PMOD0 Pin 7) |
+| **EPD_SD[14]**| `T9` | Source Data Bit 14 (PMOD0 Pin 10) |
+| **EPD_SD[15]**| `P9` | Source Data Bit 15 (PMOD0 Pin 9) |
+
+#### 3. FPGA-XIAO PMIC 핸드셰이크 인터페이스 (PMOD3 Pins 7, 8)
 | 신호 이름 | FPGA 핀번호 | 방향 | 설명 |
 | :--- | :--- | :--- | :--- |
-| **PMIC_READY** | `A14` | 입력 | High일 때 E-ink 고전압 출력이 안정되었음을 의미 |
-| **REFRESH_DONE**| `B13`| 출력 | High일 때 FPGA의 EPD 스캔이 유휴(Idle) 상태임을 의미 |
+| **PMIC_READY** | `N7`  | 입력 | High일 때 E-ink 고전압 출력이 안정되었음을 의미 (PMOD3 Pin 8) |
+| **REFRESH_DONE**| `N9` | 출력 | High일 때 FPGA의 EPD 스캔이 유휴(Idle) 상태임을 의미 (PMOD3 Pin 7) |
 
-#### 3. CSR SPI 통신 인터페이스 (PMOD4)
+#### 4. CSR SPI 통신 인터페이스 (PMOD3 Pins 1, 2, 3, 4)
 | 신호 이름 | FPGA 핀번호 | 설명 |
 | :--- | :--- | :--- |
-| **SPI_CS**   | `N6`  | Chip Select |
-| **SPI_SCK**  | `D11` | SPI Clock |
-| **SPI_MOSI** | `A11` | Master Out Slave In |
-| **SPI_MISO** | `B11` | Master In Slave Out |
+| **SPI_CS**   | `N6`  | Chip Select (PMOD3 Pin 3) |
+| **SPI_SCK**  | `D11` | SPI Clock (PMOD3 Pin 4) |
+| **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 Pin 1) |
+| **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 Pin 2) |
 
 ---
 

@@ -42,12 +42,12 @@ module mu_dsync (
 
     always @(posedge oclk) begin
         shiftreg[STAGES:0] <= {shiftreg[STAGES-1:0], in};
-`ifndef SYNTHESIS
+`ifdef SIMULATION
         sync_delay <= {$random} % 2;
 `endif
     end
 
-`ifdef SYNTHESIS
+`ifndef SIMULATION
     assign out = shiftreg[STAGES-1];
 `else
     assign out = (|sync_delay & (|RND)) ? shiftreg[STAGES] : shiftreg[STAGES-1];

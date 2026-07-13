@@ -3,12 +3,12 @@
 // =============================================================================
 // Pin Configurations (Modify these to match your actual hardware wiring)
 // =============================================================================
-#define PIN_PMIC_WAKEUP 2 // XIAO D2 -> PMIC WAKEUP
+#define PIN_PMIC_WAKEUP 6 // XIAO D6 -> PMIC WAKEUP
 #define PIN_PMIC_PWRUP 3  // XIAO D3 -> PMIC PWRUP
 
 #define PIN_FPGA_READY 1 // XIAO D1 -> FPGA PMIC_READY (Input to FPGA Pin A14)
 #define PIN_FPGA_DONE                                                          \
-  0 // XIAO D0 <- FPGA REFRESH_DONE (Output from FPGA Pin B13)
+  2 // XIAO D2 <- FPGA REFRESH_DONE (Output from FPGA Pin B13)
 
 // =============================================================================
 // TPS65185 PMIC Register definitions

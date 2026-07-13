@@ -41,7 +41,7 @@ module tb_top;
     wire [15:0] EPD_SD;
     wire EPD_SDCE0;
     wire SPI_MISO;
-    wire LED;
+    wire [5:0] LED;
 
     // Bidirs
     wire [15:0] DDR_DQ;

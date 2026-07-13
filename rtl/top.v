@@ -59,7 +59,7 @@ module top(
     input wire PMIC_READY,
     output wire REFRESH_DONE,
     // DEBUG
-    output wire LED
+    output wire [5:0] LED
     );
     
     parameter COLORMODE = "MONO";
@@ -566,7 +566,13 @@ module top(
     assign ila_signals[2] = vin_ready;
     assign ila_signals[31:3] = vin_pixel[31:3];
 
-    assign LED = |(epd_sd_caster[7:0]);
+    // Multi-status LED assignments (active-low, logic low 0 turns ON the LED)
+    assign LED[0] = !sys_ready;           // LED0 (L16): ON when system is ready (DDR + PMIC ok)
+    assign LED[1] = !dvi_locked;          // LED1 (L14): ON when HDMI/DVI is locked (HDMI active)
+    assign LED[2] = !ddr_calib_done_epdc; // LED2 (N14): ON when DDR3 calibration succeeds
+    assign LED[3] = !pmic_ready_sync;     // LED3 (N16): ON when PMIC high voltages are stable
+    assign LED[4] = REFRESH_DONE;         // LED4 (A13): ON when EPD is actively scanning/refreshing (REFRESH_DONE is low)
+    assign LED[5] = !mig_error_epdc;      // LED5 (C13): ON when memory controller registers an error
 
 
 

@@ -3,6 +3,8 @@
 *.fs
 !bin/glider_tang.fs
 *.log
+impl/
+*.gprj.user
 
 # Simulation artifacts
 sim/obj/
