@@ -1,12 +1,16 @@
-# Gowin build artifacts
+# Gowin EDA Build Artifacts
 *.json
 *.fs
 !bin/glider_tang.fs
 *.log
 impl/
 *.gprj.user
+device.cfg
+*.db
+*.vg
+*.pnr.json
 
-# Simulation artifacts
+# Simulation Artifacts (Verilator / Icarus Verilog)
 sim/obj/
 sim/obj_dir/
 sim/sim
@@ -15,5 +19,14 @@ sim/frame_*.bmp
 *.vcd
 sim_elf
 
-# OS artifacts
+# Arduino Build Artifacts
+xiao_pmic_controller/build/
+
+# OS & Editor Artifacts
 .DS_Store
+*.DS_Store
+._*
+.vscode/
+.idea/
+*.swp
+*~

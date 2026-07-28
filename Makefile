@@ -38,9 +38,9 @@ WAVE_FILE   = waveform.vcd
 
 all: $(TARGET).fs
 
-# 1. Synthesis via Yosys (Gowin target)
 $(TARGET).json: $(SRCS)
-	yosys -p "read_verilog -I$(RTL_DIR) -I$(RTL_DIR)/mulib/rtl $(SRCS); synth_gowin -json $(TARGET).json -top $(TOP_MODULE)"
+	yosys -p "read_verilog -DCSR_SELFBOOT=1 -I$(RTL_DIR) -I$(RTL_DIR)/mulib/rtl $(SRCS); synth_gowin -json $(TARGET).json -top $(TOP_MODULE)"
+
 
 # 2. Place & Route via nextpnr-himbaechel
 $(TARGET).pnr.json: $(TARGET).json $(CST_FILE)

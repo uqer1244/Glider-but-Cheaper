@@ -157,7 +157,6 @@ module csr(
             csr_lut_we <= 1'b0;
             csr_op_en <= 1'b0;
             csr_osd_en <= 1'b0;
-            `ifdef CSR_SELFBOOT
             csr_en <= 1'b1;
             csr_cfg_vfp <= `DEFAULT_VFP;
             csr_cfg_vsync <= `DEFAULT_VSYNC;
@@ -169,9 +168,7 @@ module csr(
             csr_cfg_hact <= `DEFAULT_HACT;
             csr_cfg_fbytes <= `DEFAULT_FBYTES;
             csr_cfg_mindrv <= `DEFAULT_MINDRV;
-            `else
-            csr_en <= 1'b0;
-            `endif
+
         end
         else begin
             // External write address increment

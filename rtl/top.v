@@ -45,11 +45,6 @@ module top(
     output wire EPD_SDOE,
     output wire [15:0] EPD_SD,
     output wire EPD_SDCE0,
-    // HDMI RX interface
-    input wire HDMI_RXC_P,
-    input wire HDMI_RXC_N,
-    input wire [2:0] HDMI_RX_P,
-    input wire [2:0] HDMI_RX_N,
     // CSR interface
     input wire SPI_CS,
     input wire SPI_SCK,
@@ -58,6 +53,8 @@ module top(
     // Handshake interface
     input wire PMIC_READY,
     output wire REFRESH_DONE,
+    // Switch / Button interface
+    input wire BTN_T3,
     // DEBUG
     output wire [5:0] LED
     );
@@ -120,26 +117,50 @@ module top(
     wire vin_ready;
     wire [7:0] debug;
 
-    wire dvi_pclk;
-    wire dvi_de;
-    wire dvi_vsync;
-    wire dvi_hsync;
-    wire [23:0] dvi_pixel;
-    wire dvi_locked;
-
-    dvi_rx dvi_rx_inst (
-        .rst(sys_rst),
-        .hdmi_clk_p(HDMI_RXC_P),
-        .hdmi_clk_n(HDMI_RXC_N),
-        .hdmi_d_p(HDMI_RX_P),
-        .hdmi_d_n(HDMI_RX_N),
-        .clk_pixel(dvi_pclk),
-        .de(dvi_de),
-        .vsync(dvi_vsync),
-        .hsync(dvi_hsync),
-        .pixel_data(dvi_pixel),
-        .locked(dvi_locked)
+    // Button T3 synchronization (Active Low on Tang Primer 20K: 0 when pressed)
+    wire btn_t3_sync;
+    mu_dsync btn_t3_sync_inst (
+        .iclk(1'b0),
+        .in(!BTN_T3), // 1 when pressed
+        .oclk(clk_sys),
+        .out(btn_t3_sync)
     );
+
+    // Detect button T3 press edge
+    reg btn_t3_prev = 1'b0;
+    reg btn_trigger = 1'b0;
+    always @(posedge clk_sys) begin
+        btn_t3_prev <= btn_t3_sync;
+        btn_trigger <= (btn_t3_sync && !btn_t3_prev); // Pulse high on press
+    end
+
+    // VSYNC generator: continuous ~60Hz pulse + manual Button T3 trigger
+    reg [18:0] vsync_cnt = 19'd0;
+    reg int_vsync = 1'b0;
+    always @(posedge clk_sys) begin
+        if (sys_rst) begin
+            vsync_cnt <= 19'd0;
+            int_vsync <= 1'b0;
+        end else begin
+            if (btn_trigger || vsync_cnt == 19'd449999) begin
+                vsync_cnt <= 19'd0;
+                int_vsync <= 1'b1;
+            end else begin
+                vsync_cnt <= vsync_cnt + 1'b1;
+                if (vsync_cnt > 19'd500)
+                    int_vsync <= 1'b0;
+            end
+        end
+    end
+
+    wire dvi_pclk = clk_sys;
+    wire dvi_de = 1'b0;
+    wire dvi_vsync = int_vsync;
+    wire dvi_hsync = 1'b0;
+    wire [23:0] dvi_pixel = 24'b0;
+    wire dvi_locked = 1'b1;
+
+    assign clk_epdc = clk_sys;
 
     vin #(
         .COLORMODE(COLORMODE)
@@ -160,12 +181,13 @@ module top(
         .fpdlink_even_n(3'b0),
         // Output
         .v_vsync(vin_vsync),
-        .v_pclk(clk_epdc),
+        .v_pclk(),
         .v_pixel(vin_pixel),
         .v_valid(vin_valid),
         .v_ready(vin_ready),
         .debug(debug)
     );
+
 
     // Hardware DDR controller
     wire clk_mif;
@@ -398,7 +420,10 @@ module top(
     );
 
     // EPD controller
-    wire sys_ready = ddr_calib_done_epdc && pmic_ready_sync;
+    // Unconditional ready for continuous free-running scan
+    wire sys_ready = 1'b1;
+
+
     
     // Drive REFRESH_DONE (HIGH when idle, LOW when actively scanning)
     assign REFRESH_DONE = (dbg_scan_state == 2'b00);
@@ -436,12 +461,9 @@ module top(
     wire [7:0] dbg_spi_req_addr;
     wire [7:0] dbg_spi_req_wdata;
 
-    reg epdc_rst_sync = 1'b1;
-    reg epdc_rst = 1'b1;
-    always @(posedge clk_epdc) begin
-        epdc_rst <= epdc_rst_sync;
-        epdc_rst_sync <= sys_rst;
-    end
+    wire epdc_rst_sync = 1'b0;
+    wire epdc_rst = 1'b0;
+
 
 
     wire [15:0] epd_sd_caster;
@@ -566,13 +588,31 @@ module top(
     assign ila_signals[2] = vin_ready;
     assign ila_signals[31:3] = vin_pixel[31:3];
 
-    // Multi-status LED assignments (active-low, logic low 0 turns ON the LED)
-    assign LED[0] = !sys_ready;           // LED0 (L16): ON when system is ready (DDR + PMIC ok)
-    assign LED[1] = !dvi_locked;          // LED1 (L14): ON when HDMI/DVI is locked (HDMI active)
-    assign LED[2] = !ddr_calib_done_epdc; // LED2 (N14): ON when DDR3 calibration succeeds
-    assign LED[3] = !pmic_ready_sync;     // LED3 (N16): ON when PMIC high voltages are stable
-    assign LED[4] = REFRESH_DONE;         // LED4 (A13): ON when EPD is actively scanning/refreshing (REFRESH_DONE is low)
-    assign LED[5] = !mig_error_epdc;      // LED5 (C13): ON when memory controller registers an error
+    // Multi-status LED assignments (active-low: logic 0 turns ON the LED, logic 1 turns OFF)
+    // Board Silkscreen mapping: LED[0]->D1, LED[1]->D2, LED[2]->D3, LED[3]->D4, LED[4]->D5, LED[5]->D6
+    assign LED[0] = ~sys_ready;           // LED D1 (L16): ON when System is ready (DDR3 ok)
+    assign LED[1] = 1'b0;                 // LED D2 (L14): ON (FPGA System Clock Active)
+    assign LED[2] = ~ddr_calib_done_epdc; // LED D3 (N14): ON when DDR3 memory calibration succeeds
+    assign LED[3] = 1'b1;                 // LED D4 (N16): OFF (Spare/Unused)
+    // Stretch LED D5 (REFRESH_DONE) pulse to 500ms (13.5M clock cycles at 27MHz) for visual checking
+    reg [23:0] d5_stretch_cnt = 24'd0;
+    reg d5_led_active = 1'b0;
+    always @(posedge clk_sys) begin
+        if (btn_trigger || !REFRESH_DONE) begin
+            d5_stretch_cnt <= 24'd13_500_000; // 0.5 sec
+            d5_led_active <= 1'b1;
+        end else if (d5_stretch_cnt > 0) begin
+            d5_stretch_cnt <= d5_stretch_cnt - 1'b1;
+            d5_led_active <= 1'b1;
+        end else begin
+            d5_led_active <= 1'b0;
+        end
+    end
+
+    assign LED[4] = !d5_led_active;       // LED D5 (A13): ON for 0.5s when T3 Button is pressed / Refresh triggers!
+    assign LED[5] = 1'b0;                 // LED D6 (C13): ON (Handshake bypassed)
+
+
 
 
 

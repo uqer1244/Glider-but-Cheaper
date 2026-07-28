@@ -74,7 +74,7 @@
 
 // Define this to enable operation by default after reset
 // Used for debugging purpose only
-//`define CSR_SELFBOOT
+`define CSR_SELFBOOT
 
 //`define DEFAULT_VFP         8'd10
 //`define DEFAULT_VSYNC       8'd1

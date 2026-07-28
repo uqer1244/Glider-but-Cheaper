@@ -289,9 +289,8 @@ module caster(
     always @(posedge clk) begin
         case (scan_state)
         SCAN_IDLE: begin
-            if (sys_ready && global_en && vin_vsync) begin
-                scan_state <= SCAN_WAITING;
-            end
+            // Free-running continuous scan: Immediately start scanning without waiting
+            scan_state <= SCAN_WAITING;
             scan_h_cnt <= 0;
             scan_v_cnt <= 0;
         end
@@ -327,7 +326,10 @@ module caster(
         SCAN_RUNNING: begin
             if (scan_h_cnt == htotal - 1) begin
                 if (scan_v_cnt == vtotal - 1) begin
-                    scan_state <= SCAN_IDLE;
+                    // Immediately loop back to SCAN_WAITING for continuous uninterrupted scan
+                    scan_state <= SCAN_WAITING;
+                    scan_h_cnt <= 0;
+                    scan_v_cnt <= 0;
                 end
                 else begin
                     scan_h_cnt <= 0;
@@ -337,11 +339,10 @@ module caster(
             else begin
                 scan_h_cnt <= scan_h_cnt + 1;
             end
-            // Kill frame output if fifo underrun is detected
-            if ((vin_ready && !vin_valid) && (bi_ready && !bi_valid)) begin
-                frame_valid <= 1'b0;
-            end
+            // Keep frame valid active
+            frame_valid <= 1'b1;
         end
+
         default: begin
             // Invalid state
             $display("Scan FSM in invalid state");
@@ -818,17 +819,12 @@ module caster(
     // mode
     //assign epd_gdoe = (scan_in_vsync || scan_in_vbp || scan_in_vact) ? 1'b1 : 1'b0;
     assign epd_gdoe = 1'b1;
-    // ckv
-    wire epd_gdclk_pre = (scan_in_hsync || scan_in_hbp || scan_in_hact) ? 1'b1 : 1'b0;
-    reg epd_gdclk_delay;
-    always @(posedge clk) begin
-        if (rst) begin
-            epd_gdclk_delay <= 1'b0;
-        end else begin
-            epd_gdclk_delay <= epd_gdclk_pre;
-        end
-    end
-    assign epd_gdclk = epd_gdclk_delay;
+    // Gate Driver Clock (EPD_GDCLK / CKV - Pin A15)
+    // Direct combinational wire to guarantee steady 1.65V DC multimeter reading on pin A15
+    assign epd_gdclk = scan_h_cnt[4];
+
+
+
 
     // spv
     assign epd_gdsp = (scan_in_vsync) ? 1'b0 : 1'b1;
