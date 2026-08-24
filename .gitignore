@@ -18,6 +18,7 @@ sim/trace.vcd
 sim/frame_*.bmp
 *.vcd
 sim_elf
+sim_nodump
 
 # Arduino Build Artifacts
 xiao_pmic_controller/build/

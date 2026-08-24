@@ -21,6 +21,9 @@
 // lines once per frame.
 //
 // Run with:  make simulation
+// Set SIM_DEFS="-DNO_DUMP" to skip the VCD entirely -- the checks below are
+// self-reporting, and the dump is what makes a full run slow and produce a
+// multi-hundred-megabyte file.
 // Set SIM_DEFS="-DFULL_DUMP" for a full-hierarchy VCD; by default only the
 // testbench level is dumped, because a whole-design trace over a 663k-clock
 // frame is several GB.
@@ -246,11 +249,13 @@ module tb_top;
     integer mark;
 
     initial begin
+`ifndef NO_DUMP
         $dumpfile("waveform.vcd");
 `ifdef FULL_DUMP
         $dumpvars(0, tb_top);
 `else
         $dumpvars(1, tb_top);
+`endif
 `endif
 
         $display("[TB] htotal=%0d vtotal=%0d active=%0d (%0d clk/frame)",

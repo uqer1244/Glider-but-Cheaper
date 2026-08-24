@@ -655,6 +655,22 @@ module top(
         .dup_cnt_o(sdchk_dup)
     );
 
+    // Vertical half of the 2x upscale: every odd line must repeat the even
+    // line before it. epd_sd_check cannot see that -- it is a property across
+    // lines, not within a word.
+    wire [15:0] vdup_err;
+    wire [15:0] vdup_pairs;
+    epd_line_dup epd_line_dup (
+        .clk(clk_epdc),
+        .rst(epdc_rst),
+        .frame_tick(selftest_frame_done),
+        .epd_sd(EPD_SD),
+        .epd_sdce0(EPD_SDCE0),
+        .epd_sdle(EPD_SDLE),
+        .pairs_o(vdup_pairs),
+        .errs_o(vdup_err)
+    );
+
     // Every frame's counters go out of the dock's USB serial port as text.
     // The LED blink code says only which count is wrong; this says by how
     // much, which is the number needed to tell a timing error from a wiring
@@ -674,6 +690,8 @@ module top(
         .sd_or(sdchk_or),
         .hiz_cnt(sdchk_hiz),
         .dup_cnt(sdchk_dup),
+        .vpair_err(vdup_err),
+        .vpair_cnt(vdup_pairs),
         .tx(UART_TX)
     );
 
