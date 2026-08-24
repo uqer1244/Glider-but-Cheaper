@@ -13,20 +13,47 @@
 // =============================================================================
 // TPS651851 PMIC Register Definitions
 // =============================================================================
+// Register map taken from epdiy's driver for the same part, which is in this
+// repo at epdiy-main/src/board/tps65185.h. The map used here before was wrong
+// in a way that silently did nothing and silently did harm:
+//
+//   old REG_VCOM   0x00  is TMST_VALUE, read only -> VCOM was never set at all
+//   old REG_UP_SEQ 0x02  is VADJ, the VPOS/VNEG magnitude -> writing 0x80 to it
+//                        changed the rail voltages as a side effect
+//
+// epdiy never writes VADJ; it leaves the default. Do the same. The real
+// power-up sequencer is at 0x09/0x0A and is not touched either.
 #define PMIC_I2C_ADDR  0x68 // 7-bit I2C address of TPS651851
-#define REG_VCOM       0x00 // VCOM Voltage Setting Register
-#define REG_ENABLE     0x01 // Power Rails Enable Register
-#define REG_UP_SEQ     0x02 // Power-Up Sequencer Register
+#define REG_TMST_VALUE 0x00 // read only, on-chip temperature
+#define REG_ENABLE     0x01 // power rails enable
+#define REG_VADJ       0x02 // VPOS/VNEG magnitude -- do not write, default is right
+#define REG_VCOM1      0x03 // VCOM[7:0]
+#define REG_VCOM2      0x04 // VCOM[8]
+#define REG_PG         0x0F // power good, per rail
+#define REG_REVID      0x10
 
-// Target VCOM: -1.31V (1310 mV)
-// Formula: VCOM = - (600 + VCOM_VAL * 10) mV
-// For -1.31V: VCOM_VAL = (1310 - 600) / 10 = 71 (0x47)
-uint8_t current_vcom_val = 71; 
+// Rails good. epdiy waits for exactly this before driving anything.
+#define PG_MASK        0xFA
+
+// VCOM for this panel is -1.31 V. That is not a guess: it is printed on the
+// panel itself. Confirmed 2026-08-24.
+//
+// The TPS65185 takes it as a positive magnitude in units of 10 mV, split
+// across two registers:  val = mV / 10;  VCOM2 = val >> 8;  VCOM1 = val & 0xFF.
+// So -1.31 V is val = 131 -> VCOM2 = 0x00, VCOM1 = 0x83.
+//
+// The old code used VCOM = -(600 + val*10) mV and val = 71, which even at the
+// right register would have asked for -1.31 V by a formula the part does not
+// use. Two independent errors pointing at the same wrong result.
+uint16_t current_vcom_mv = 1310;
 bool pmic_power_state = false;
+bool pmic_rails_good = false;
 
 // Function Declarations
 void pmic_write_reg(uint8_t reg, uint8_t val);
 uint8_t pmic_read_reg(uint8_t reg);
+void pmic_set_vcom(uint16_t vcom_mv);
+bool pmic_wait_power_good(unsigned long timeout_ms);
 void pmic_power_up();
 void pmic_power_down();
 void print_status();
@@ -45,7 +72,10 @@ void setup() {
   // Safe Boot Defaults
   digitalWrite(PIN_PWR_SW, LOW);   // Turn ON P-MOSFET (GND Gate)
   digitalWrite(PIN_PWR_EN, HIGH);  // Turn ON Load Switch (3.3V Enable)
-  digitalWrite(PIN_FPGA_READY, HIGH); // Handshake Ready
+  // Not ready until the PMIC says the rails are actually up. The old code
+  // raised this in setup() before talking to the PMIC at all, so the signal
+  // carried no information -- which is why the FPGA side stopped using it.
+  digitalWrite(PIN_FPGA_READY, LOW);
 
   // Reset IT8951 TCON
   digitalWrite(PIN_TFT_RST, LOW);
@@ -78,14 +108,17 @@ void loop() {
   // Continuously maintain Power Gates ACTIVE
   digitalWrite(PIN_PWR_SW, LOW);   // P-MOSFET ON
   digitalWrite(PIN_PWR_EN, HIGH);  // Load Switch ON
-  digitalWrite(PIN_FPGA_READY, HIGH); // Handshake HIGH
+  digitalWrite(PIN_FPGA_READY, pmic_rails_good ? HIGH : LOW);
 
-  // Keep sending PMIC rail enable packet every 2 seconds
+  // Re-assert the rail enable periodically, and re-read power good so a rail
+  // that drops out is noticed. The old keepalive also rewrote 0x02 every two
+  // seconds, which meant it was rewriting VADJ every two seconds.
   static unsigned long last_keepalive = 0;
   if (millis() - last_keepalive > 2000) {
     if (pmic_power_state) {
       pmic_write_reg(REG_ENABLE, 0x3F);
-      pmic_write_reg(REG_UP_SEQ, 0x80);
+      uint8_t pg = pmic_read_reg(REG_PG);
+      pmic_rails_good = ((pg & PG_MASK) == PG_MASK);
     }
     last_keepalive = millis();
   }
@@ -110,6 +143,37 @@ uint8_t pmic_read_reg(uint8_t reg) {
   return Wire.available() ? Wire.read() : 0xFF;
 }
 
+// VCOM is a positive magnitude in units of 10 mV, split over two registers.
+// Order matters: write the high bit first, then the low byte, the same way
+// epdiy does it.
+void pmic_set_vcom(uint16_t vcom_mv) {
+  uint16_t val = vcom_mv / 10;
+  Serial.print("[PMIC] VCOM = -");
+  Serial.print(vcom_mv / 1000.0f, 2);
+  Serial.print(" V -> VCOM2(0x04)=0x");
+  Serial.print((val >> 8) & 0x01, HEX);
+  Serial.print(" VCOM1(0x03)=0x");
+  Serial.println(val & 0xFF, HEX);
+  pmic_write_reg(REG_VCOM2, (val >> 8) & 0x01);
+  pmic_write_reg(REG_VCOM1, val & 0xFF);
+}
+
+// Poll the power good register the way epdiy does, but with a timeout: a
+// blocking wait here would hang the whole controller on a hardware fault.
+bool pmic_wait_power_good(unsigned long timeout_ms) {
+  unsigned long start = millis();
+  while (millis() - start < timeout_ms) {
+    uint8_t pg = pmic_read_reg(REG_PG);
+    if ((pg & PG_MASK) == PG_MASK) {
+      pmic_rails_good = true;
+      return true;
+    }
+    delay(5);
+  }
+  pmic_rails_good = false;
+  return false;
+}
+
 // Power-up sequence for TPS651851 PMIC
 void pmic_power_up() {
   Serial.println("\n[PMIC] Initiating EE03 Power-Up Sequence...");
@@ -119,25 +183,33 @@ void pmic_power_up() {
   digitalWrite(PIN_PWR_EN, HIGH);
   delay(20);
 
-  // 2. Set Target VCOM (-1.31V -> Reg 0x00 = 71 / 0x47)
-  Serial.print("[PMIC] Setting VCOM Register (0x00) to 71 (-1.31V)...");
-  pmic_write_reg(REG_VCOM, current_vcom_val);
+  // 2. Report who we are talking to. A wrong or absent part reads 0xFF here,
+  //    which is worth knowing before enabling anything.
+  Serial.print("[PMIC] REVID = 0x");
+  Serial.println(pmic_read_reg(REG_REVID), HEX);
+
+  // 3. Set VCOM before the rails come up.
+  pmic_set_vcom(current_vcom_mv);
   delay(10);
 
-  // 3. Enable All Power Rails (VPOS +15V, VNEG -15V, VGH, VGL, VCOM) -> Reg 0x01 = 0x3F
-  Serial.println("[PMIC] Enabling Power Rails (REG 0x01 = 0x3F)...");
+  // 4. Enable the rails.
+  Serial.println("[PMIC] Enabling power rails (ENABLE 0x01 = 0x3F)...");
   pmic_write_reg(REG_ENABLE, 0x3F);
-  delay(10);
-
-  // 4. Trigger Power-Up Sequencer -> Reg 0x02 = 0x80
-  Serial.println("[PMIC] Triggering Power-Up Sequencer (REG 0x02 = 0x80)...");
-  pmic_write_reg(REG_UP_SEQ, 0x80);
-  delay(50);
-
-  // 5. Notify FPGA
-  digitalWrite(PIN_FPGA_READY, HIGH);
   pmic_power_state = true;
-  Serial.println("[STATUS] PMIC High-Voltage Rails (+15V, -15V, VGH, VGL, VCOM -1.31V) ACTIVATED!");
+
+  // 5. Wait for the PMIC to say the rails are up, and only then tell the FPGA.
+  //    VADJ (0x02) is deliberately not written: the default is correct and the
+  //    old code was corrupting it.
+  if (pmic_wait_power_good(500)) {
+    digitalWrite(PIN_FPGA_READY, HIGH);
+    Serial.println("[STATUS] Rails up and power good. VCOM/VPOS/VNEG/VGH/VGL active.");
+  }
+  else {
+    digitalWrite(PIN_FPGA_READY, LOW);
+    Serial.print("[FAIL] Power good never asserted. PG = 0x");
+    Serial.println(pmic_read_reg(REG_PG), HEX);
+    Serial.println("[FAIL] Rails may be partially up. Measure before connecting a panel.");
+  }
 }
 
 void pmic_power_down() {
@@ -145,6 +217,7 @@ void pmic_power_down() {
   digitalWrite(PIN_FPGA_READY, LOW);
   pmic_write_reg(REG_ENABLE, 0x00);
   pmic_power_state = false;
+  pmic_rails_good = false;
   Serial.println("[STATUS] PMIC High-Voltage Rails Disables.");
 }
 
@@ -153,10 +226,22 @@ void print_status() {
   Serial.print("PMIC Power State   : ");
   Serial.println(pmic_power_state ? "ON (HIGH VOLTAGES ACTIVE)" : "OFF");
 
-  float vcom_volts = -((float)(600 + current_vcom_val * 10) / 1000.0f);
-  Serial.print("Target VCOM Voltage: ");
-  Serial.print(vcom_volts, 2);
-  Serial.println(" V");
+  Serial.print("Target VCOM Voltage: -");
+  Serial.print(current_vcom_mv / 1000.0f, 2);
+  Serial.print(" V  (VCOM1=0x");
+  Serial.print((current_vcom_mv / 10) & 0xFF, HEX);
+  Serial.print(" VCOM2=0x");
+  Serial.print(((current_vcom_mv / 10) >> 8) & 0x01, HEX);
+  Serial.println(")");
+
+  uint8_t pg = pmic_read_reg(REG_PG);
+  Serial.print("Power Good (0x0F)  : 0x");
+  Serial.print(pg, HEX);
+  Serial.println(((pg & PG_MASK) == PG_MASK) ? "  ALL RAILS GOOD" : "  NOT GOOD");
+
+  Serial.print("Die Temperature    : ");
+  Serial.print((int8_t)pmic_read_reg(REG_TMST_VALUE));
+  Serial.println(" C");
 
   Serial.print("P-MOSFET Gate (GPIO 6) : ");
   Serial.println(digitalRead(PIN_PWR_SW) ? "HIGH (OFF)" : "LOW (ON)");
@@ -176,7 +261,7 @@ void handle_serial_cli() {
     if (input.length() == 0) return;
 
     if (input.equalsIgnoreCase("help")) {
-      Serial.println("\nCommands: 'on', 'off', 'status', 'vcom 1.31'");
+      Serial.println("\nCommands: 'on', 'off', 'status', 'vcom 1.31' (magnitude in volts)");
     } else if (input.equalsIgnoreCase("on")) {
       pmic_power_up();
     } else if (input.equalsIgnoreCase("off")) {
@@ -186,8 +271,15 @@ void handle_serial_cli() {
     } else if (input.startsWith("vcom ")) {
       float val = input.substring(5).toFloat();
       if (val < 0) val = -val;
-      current_vcom_val = (uint8_t)((val * 1000.0f - 600.0f) / 10.0f);
-      pmic_power_up();
+      uint16_t mv = (uint16_t)(val * 1000.0f + 0.5f);
+      // The part holds VCOM in 9 bits of 10 mV, so 5.11 V is the ceiling.
+      if (mv > 5110) {
+        Serial.println("[CLI] Out of range: VCOM magnitude must be <= 5.11 V");
+      }
+      else {
+        current_vcom_mv = mv;
+        pmic_set_vcom(current_vcom_mv);
+      }
     }
   }
 }
