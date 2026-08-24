@@ -130,6 +130,17 @@
 `define DEFAULT_HACT        12'd320
 // htotal 344 x vtotal 1927 = 662,888 clk/frame -> 60 Hz at 40.5 MHz
 
+// Scan totals, widened on purpose. Both operands above are 12-bit literals,
+// so `DEFAULT_HACT * `DEFAULT_VACT is a 12-bit self-determined multiply --
+// and 320 * 1920 = 614400 is an exact multiple of 4096, so it truncates to
+// precisely 0. iverilog evaluates it in 32-bit integer context and gets
+// 614400; yosys truncates. That divergence made epd_selftest compare its
+// active-window count against zero in hardware while passing in simulation.
+// Zero-extending both operands forces a full-width multiply in either tool.
+// Use these instead of multiplying the defines at the point of use.
+`define DEFAULT_VTOTAL      ({20'd0, `DEFAULT_VACT} + {24'd0, `DEFAULT_VFP} + {24'd0, `DEFAULT_VSYNC} + {24'd0, `DEFAULT_VBP})
+`define DEFAULT_ACTIVE      ({20'd0, `DEFAULT_HACT} * {20'd0, `DEFAULT_VACT})
+
 // `define DEFAULT_VFP         8'd33
 // `define DEFAULT_VSYNC       8'd1
 // `define DEFAULT_VBP         8'd2

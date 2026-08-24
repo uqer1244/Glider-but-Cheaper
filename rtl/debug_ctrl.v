@@ -26,6 +26,13 @@
 //   LED3  FREERUN is on
 //   LED5:4  pattern index, or mode index while BTN3 is held
 //
+// Holding BTN2 replaces the whole LED row with epd_selftest's readout of how
+// far the SDCE0 active-window count missed its expected value: the index pair
+// counts nibble 0..3 and the value four show that nibble, one per second,
+// cycling, LSB first. The number is signed, so a frame that scans exactly
+// right reads 0, 0, 0, 0. See epd_selftest.v for the encoding and for why the
+// error is shown instead of the raw count.
+//
 // The LED outputs are already inverted here, so they drive the active-low
 // board LEDs directly.
 
@@ -39,6 +46,7 @@ module debug_ctrl #(
     input  wire [4:0] btn_n,        // active low, asynchronous
 
     input  wire selftest_led,       // from epd_selftest.v, active high
+    input  wire [5:0] selftest_diag,// active-window readout, shown on BTN2 held
 
     output reg  drive_en,
     output reg  freerun,
@@ -148,7 +156,10 @@ module debug_ctrl #(
     // BTN3 held swaps LED5:4 from the pattern index to the mode index.
     wire [1:0] sel_display = btn_level[3] ? mode_sel : pattern;
 
-    assign led = ~{sel_display, freerun, drive_en, selftest_led, heartbeat};
+    // BTN2 held hands the row over to the self-test readout. BTN2 is edge
+    // triggered for the pattern, so holding it is otherwise unused.
+    assign led = btn_level[2] ? ~selftest_diag
+                              : ~{sel_display, freerun, drive_en, selftest_led, heartbeat};
 
 endmodule
 `default_nettype wire

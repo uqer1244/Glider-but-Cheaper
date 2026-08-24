@@ -59,7 +59,9 @@ module top(
     output wire REFRESH_DONE,
     // Front panel: 5 buttons (active low) and 6 LEDs (active low)
     input wire [4:0] BTN_N,
-    output wire [5:0] LED
+    output wire [5:0] LED,
+    // Debug console on the dock's onboard USB-UART (FT2232 channel B)
+    output wire UART_TX
     );
     
     parameter COLORMODE = "MONO";
@@ -146,6 +148,7 @@ module top(
     wire [1:0] dbg_mode_sel;
     wire dbg_mode_toggle;
     wire selftest_led;
+    wire [5:0] selftest_diag;
 
     debug_ctrl #(
         .CLK_HZ(40_500_000)
@@ -154,6 +157,7 @@ module top(
         .rst(sys_rst),
         .btn_n(BTN_N),
         .selftest_led(selftest_led),
+        .selftest_diag(selftest_diag),
         .drive_en(dbg_drive_en),
         .freerun(dbg_freerun),
         .step_pulse(dbg_step),
@@ -608,9 +612,14 @@ module top(
     // validated with no logic analyser and no panel attached.
     wire selftest_pass;
     wire [1:0] selftest_fail;
+    wire selftest_frame_done;
+    wire [11:0] selftest_last_gdclk;
+    wire [11:0] selftest_last_sdle;
+    wire [20:0] selftest_last_active;
+    wire signed [21:0] selftest_err;
     epd_selftest #(
-        .EXP_VTOTAL(`DEFAULT_VACT + `DEFAULT_VFP + `DEFAULT_VSYNC + `DEFAULT_VBP),
-        .EXP_ACTIVE(`DEFAULT_HACT * `DEFAULT_VACT),
+        .EXP_VTOTAL(`DEFAULT_VTOTAL),
+        .EXP_ACTIVE(`DEFAULT_ACTIVE),
         .BLINK_DIV(25'd10_125_000)
     ) epd_selftest (
         .clk(clk_epdc),
@@ -621,7 +630,32 @@ module top(
         .epd_sdce0(EPD_SDCE0),
         .pass(selftest_pass),
         .fail_code(selftest_fail),
+        .diag(selftest_diag),
+        .frame_done(selftest_frame_done),
+        .last_gdclk_o(selftest_last_gdclk),
+        .last_sdle_o(selftest_last_sdle),
+        .last_active_o(selftest_last_active),
+        .err_o(selftest_err),
         .led(selftest_led)
+    );
+
+    // Every frame's counters go out of the dock's USB serial port as text.
+    // The LED blink code says only which count is wrong; this says by how
+    // much, which is the number needed to tell a timing error from a wiring
+    // error. Costs one pin that nothing else uses.
+    debug_uart #(
+        .DECIMATE(15)               // 4 lines/s at 60 Hz
+    ) debug_uart (
+        .clk(clk_epdc),
+        .rst(epdc_rst),
+        .frame_tick(selftest_frame_done),
+        .gdclk_cnt(selftest_last_gdclk),
+        .sdle_cnt(selftest_last_sdle),
+        .active_cnt(selftest_last_active),
+        .err(selftest_err),
+        .pass(selftest_pass),
+        .fail_code(selftest_fail),
+        .tx(UART_TX)
     );
 
     // LED[5:0] is driven by debug_ctrl, already active low.

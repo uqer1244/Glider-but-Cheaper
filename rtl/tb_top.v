@@ -31,9 +31,15 @@ module tb_top;
 
     // `integer` matters: the defines are sized literals, so an unsized localparam
     // inherits their 12-bit width and HTOTAL * VTOTAL silently wraps.
-    localparam integer VTOTAL = `DEFAULT_VFP + `DEFAULT_VSYNC + `DEFAULT_VBP + `DEFAULT_VACT;
+    //
+    // The same hazard bit top.v, where a module parameter override has no
+    // integer context to widen it: `DEFAULT_HACT * `DEFAULT_VACT truncated to
+    // 0 under yosys while iverilog computed 614400, so the self-test compared
+    // against zero on hardware and passed in simulation. VTOTAL and ACTIVE now
+    // come from defines.vh, pre-widened, so both files cannot disagree again.
+    localparam integer VTOTAL = `DEFAULT_VTOTAL;
     localparam integer HTOTAL = `DEFAULT_HFP + `DEFAULT_HSYNC + `DEFAULT_HBP + `DEFAULT_HACT;
-    localparam integer ACTIVE = `DEFAULT_HACT * `DEFAULT_VACT;
+    localparam integer ACTIVE = `DEFAULT_ACTIVE;
 
     // 40.5 MHz. sysclock.v bypasses the rPLL under SIMULATION and feeds CLK_IN
     // straight through, so this is the actual core clock in simulation.
@@ -65,6 +71,7 @@ module tb_top;
     wire SPI_MISO;
     wire REFRESH_DONE;
     wire [5:0] LED;
+    wire UART_TX;
 
     wire [15:0] DDR_DQ;
     wire DDR_UDQS_P, DDR_UDQS_N, DDR_LDQS_P, DDR_LDQS_N;
@@ -108,7 +115,8 @@ module tb_top;
         .SPI_MISO(SPI_MISO),
         .REFRESH_DONE(REFRESH_DONE),
         .BTN_N(BTN_N),
-        .LED(LED)
+        .LED(LED),
+        .UART_TX(UART_TX)
     );
 
     always #CLK_HALF CLK_IN = ~CLK_IN;
@@ -181,6 +189,25 @@ module tb_top;
             if (f_gdclk != VTOTAL) fail("GDCLK count");
             if (f_sdle  != VTOTAL) fail("SDLE count");
             if (f_activ != ACTIVE) fail("SDCE0 active window");
+
+            // The tb counted these itself above. epd_selftest.v counts the same
+            // three in fabric and is what LED1 actually reports, so check its
+            // verdict too -- otherwise the module driving the bring-up LED is
+            // the one thing the simulation never tests.
+            $display("[TB]   selftest: pass=%0d fail_code=%0d (gdclk=%0d sdle=%0d active=%0d)",
+                     uut.epd_selftest.pass, uut.epd_selftest.fail_code,
+                     uut.epd_selftest.gdclk_cnt, uut.epd_selftest.sdle_cnt,
+                     uut.epd_selftest.active_cnt);
+            $display("[TB]   selftest latched: gdclk=%0d sdle=%0d active=%0d  err=%0d",
+                     uut.epd_selftest.last_gdclk, uut.epd_selftest.last_sdle,
+                     uut.epd_selftest.last_active,
+                     $signed(uut.epd_selftest.err_full));
+            $display("[TB]   diag=%06b (nib_idx=%0d nib_val=0x%0X)  err16=0x%04X",
+                     uut.epd_selftest.diag, uut.epd_selftest.diag[5:4],
+                     uut.epd_selftest.diag[3:0], uut.epd_selftest.err16);
+            if (uut.epd_selftest.err_full !== 0)
+                fail("selftest latched active window error is non-zero");
+            if (!uut.epd_selftest.pass) fail("epd_selftest did not pass");
         end
     endtask
 

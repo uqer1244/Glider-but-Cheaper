@@ -9,6 +9,8 @@ SRCS        = $(RTL_DIR)/top.v \
               $(RTL_DIR)/caster.v \
               $(RTL_DIR)/epd_selftest.v \
               $(RTL_DIR)/debug_ctrl.v \
+              $(RTL_DIR)/debug_uart.v \
+              $(RTL_DIR)/uart_tx.v \
               $(RTL_DIR)/csr_master.v \
               $(RTL_DIR)/pixel_processing.v \
               $(RTL_DIR)/wvfmlut.v \

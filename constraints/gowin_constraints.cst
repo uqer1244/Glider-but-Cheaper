@@ -204,3 +204,9 @@ IO_LOC "BTN_N[4]" C7;
 IO_PORT "BTN_N[4]" IO_TYPE=LVCMOS15 PULL_MODE=UP;
 
 
+
+// Debug console on the dock's onboard USB-UART (FT2232 channel B, the second
+// serial port that enumerates alongside the JTAG one). Pin from Sipeed's
+// Tang Primer 20K Dock pin table. TX only -- nothing sends to the board.
+IO_LOC "UART_TX" M11;
+IO_PORT "UART_TX" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
