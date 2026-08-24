@@ -4,17 +4,22 @@
 // debug_uart.v
 // Prints one fixed-width line of epd_selftest's counters per emitted frame.
 //
-//   G=787 S=787 A=096000 E=+000000 P=1 F=0
-//   |     |     |        |         |   `- fail_code, 0 when passing
-//   |     |     |        |         `----- pass
-//   |     |     |        `--------------- active_cnt - EXP_ACTIVE, sign+magnitude
-//   |     |     `------------------------ SDCE0 active-window cycles
-//   |     `------------------------------ SDLE rising edges
-//   `------------------------------------ GDCLK rising edges
+//   G=787 S=787 A=096000 E=+000000 P=1 F=0 U=ff Z=0000 D=0000
+//   |     |     |        |         |   |   |    |      `- upscale-wiring misses
+//   |     |     |        |         |   |   |    `-------- Hi-Z (2'b11) cycles
+//   |     |     |        |         |   |   `------------- OR of SD[15:8]
+//   |     |     |        |         |   `----------------- fail_code, 0 = passing
+//   |     |     |        |         `--------------------- pass
+//   |     |     |        `------------------------------- active_cnt - EXP_ACTIVE
+//   |     |     `--------------------------------------- SDCE0 active-window cycles
+//   |     `--------------------------------------------- SDLE rising edges
+//   `--------------------------------------------------- GDCLK rising edges
 //
 // All numbers are hex. The expected healthy line is
-//   G=787 S=787 A=096000 E=+000000 P=1 F=0
-// (0x787 = 1927, 0x96000 = 614400).
+//   G=787 S=787 A=096000 E=+000000 P=1 F=0 U=<nonzero> Z=0000 D=0000
+// (0x787 = 1927, 0x96000 = 614400). U must not be 00: that would mean the
+// top half of the bus is dead and OUTPUT_16B never took effect. See
+// epd_sd_check.v for what Z and D mean.
 //
 // Why hex and fixed width: no divider, no variable-length formatting, and the
 // line is diffable -- a changing field is visually obvious in a log.
@@ -36,11 +41,14 @@ module debug_uart #(
     input  wire signed [21:0] err,
     input  wire        pass,
     input  wire [1:0]  fail_code,
+    input  wire [7:0]  sd_or,
+    input  wire [15:0] hiz_cnt,
+    input  wire [15:0] dup_cnt,
 
     output wire        tx
 );
 
-    localparam LINE_LEN = 39;
+    localparam LINE_LEN = 58;
 
     // ---- snapshot ----
     // Latched when a line starts so the fields cannot change mid-line and
@@ -50,6 +58,8 @@ module debug_uart #(
     reg [23:0] s_errmag;
     reg        s_errneg, s_pass;
     reg [1:0]  s_fail;
+    reg [7:0]  s_sdor;
+    reg [15:0] s_hiz, s_dup;
 
     reg [7:0]  frame_div;
     reg [5:0]  char_idx;
@@ -105,7 +115,26 @@ module debug_uart #(
             6'd35: ch = "F";
             6'd36: ch = "=";
             6'd37: ch = hex({2'd0, s_fail});
-            6'd38: ch = 8'h0a;               // '\n'
+            6'd38: ch = " ";
+            6'd39: ch = "U";
+            6'd40: ch = "=";
+            6'd41: ch = hex(s_sdor[7:4]);
+            6'd42: ch = hex(s_sdor[3:0]);
+            6'd43: ch = " ";
+            6'd44: ch = "Z";
+            6'd45: ch = "=";
+            6'd46: ch = hex(s_hiz[15:12]);
+            6'd47: ch = hex(s_hiz[11:8]);
+            6'd48: ch = hex(s_hiz[7:4]);
+            6'd49: ch = hex(s_hiz[3:0]);
+            6'd50: ch = " ";
+            6'd51: ch = "D";
+            6'd52: ch = "=";
+            6'd53: ch = hex(s_dup[15:12]);
+            6'd54: ch = hex(s_dup[11:8]);
+            6'd55: ch = hex(s_dup[7:4]);
+            6'd56: ch = hex(s_dup[3:0]);
+            6'd57: ch = 8'h0a;               // '\n'
             default: ch = " ";
         endcase
     end
@@ -129,6 +158,9 @@ module debug_uart #(
             s_errneg  <= 1'b0;
             s_pass    <= 1'b0;
             s_fail    <= 2'd0;
+            s_sdor    <= 8'd0;
+            s_hiz     <= 16'd0;
+            s_dup     <= 16'd0;
         end
         else begin
             uart_load <= 1'b0;
@@ -148,6 +180,9 @@ module debug_uart #(
                                             : {2'd0, err};
                         s_pass   <= pass;
                         s_fail   <= fail_code;
+                        s_sdor   <= sd_or;
+                        s_hiz    <= hiz_cnt;
+                        s_dup    <= dup_cnt;
                         sending  <= 1'b1;
                         char_idx <= 6'd0;
                     end

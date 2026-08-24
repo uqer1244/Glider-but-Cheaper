@@ -10,6 +10,7 @@ SRCS        = $(RTL_DIR)/top.v \
               $(RTL_DIR)/epd_selftest.v \
               $(RTL_DIR)/debug_ctrl.v \
               $(RTL_DIR)/debug_uart.v \
+              $(RTL_DIR)/epd_sd_check.v \
               $(RTL_DIR)/uart_tx.v \
               $(RTL_DIR)/csr_master.v \
               $(RTL_DIR)/pixel_processing.v \

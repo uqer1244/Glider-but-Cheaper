@@ -208,6 +208,20 @@ module tb_top;
             if (uut.epd_selftest.err_full !== 0)
                 fail("selftest latched active window error is non-zero");
             if (!uut.epd_selftest.pass) fail("epd_selftest did not pass");
+
+            // epd_sd_check watches the data bus, which nothing else here looks
+            // at. Hardware reports U=ff Z=0000 D=0000; assert the same in
+            // simulation so a regression in the output stage is caught before
+            // it reaches a board.
+            $display("[TB]   sd_check: U=%02x Z=%0d D=%0d",
+                     uut.epd_sd_check.sd_or_o, uut.epd_sd_check.hiz_cnt_o,
+                     uut.epd_sd_check.dup_cnt_o);
+            if (uut.epd_sd_check.sd_or_o == 8'd0)
+                fail("SD[15:8] never asserted -- OUTPUT_16B not in effect");
+            if (uut.epd_sd_check.hiz_cnt_o != 0)
+                fail("SD bus drove 2'b11 (Hi-Z) during the active window");
+            if (uut.epd_sd_check.dup_cnt_o != 0)
+                fail("2x upscale duplication broken on the SD bus");
         end
     endtask
 

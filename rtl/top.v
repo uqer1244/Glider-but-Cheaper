@@ -639,6 +639,22 @@ module top(
         .led(selftest_led)
     );
 
+    // Checks the data bus itself: epd_selftest only counts control edges and
+    // never inspects SD[15:0].
+    wire [7:0]  sdchk_or;
+    wire [15:0] sdchk_hiz;
+    wire [15:0] sdchk_dup;
+    epd_sd_check epd_sd_check (
+        .clk(clk_epdc),
+        .rst(epdc_rst),
+        .frame_tick(selftest_frame_done),
+        .epd_sd(EPD_SD),
+        .epd_sdce0(EPD_SDCE0),
+        .sd_or_o(sdchk_or),
+        .hiz_cnt_o(sdchk_hiz),
+        .dup_cnt_o(sdchk_dup)
+    );
+
     // Every frame's counters go out of the dock's USB serial port as text.
     // The LED blink code says only which count is wrong; this says by how
     // much, which is the number needed to tell a timing error from a wiring
@@ -655,6 +671,9 @@ module top(
         .err(selftest_err),
         .pass(selftest_pass),
         .fail_code(selftest_fail),
+        .sd_or(sdchk_or),
+        .hiz_cnt(sdchk_hiz),
+        .dup_cnt(sdchk_dup),
         .tx(UART_TX)
     );
 
