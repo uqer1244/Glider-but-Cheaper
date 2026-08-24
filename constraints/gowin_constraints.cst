@@ -4,17 +4,20 @@
 IO_LOC "CLK_IN" H11;
 IO_PORT "CLK_IN" IO_TYPE=LVCMOS33;
 
-IO_LOC "LED[0]" L16;
+// LED bus order was reversed against the board silkscreen: the bit index and
+// the physical LED ran in opposite directions, so LED0 (heartbeat) lit the
+// LED marked 5. Confirmed on hardware 2026-08-24; index now follows the silk.
+IO_LOC "LED[0]" C13;
 IO_PORT "LED[0]" IO_TYPE=LVCMOS33;
-IO_LOC "LED[1]" L14;
+IO_LOC "LED[1]" A13;
 IO_PORT "LED[1]" IO_TYPE=LVCMOS33;
-IO_LOC "LED[2]" N14;
+IO_LOC "LED[2]" N16;
 IO_PORT "LED[2]" IO_TYPE=LVCMOS33;
-IO_LOC "LED[3]" N16;
+IO_LOC "LED[3]" N14;
 IO_PORT "LED[3]" IO_TYPE=LVCMOS33;
-IO_LOC "LED[4]" A13;
+IO_LOC "LED[4]" L14;
 IO_PORT "LED[4]" IO_TYPE=LVCMOS33;
-IO_LOC "LED[5]" C13;
+IO_LOC "LED[5]" L16;
 IO_PORT "LED[5]" IO_TYPE=LVCMOS33;
 
 // DDR3
