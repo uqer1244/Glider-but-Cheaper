@@ -54,6 +54,7 @@ void pmic_write_reg(uint8_t reg, uint8_t val);
 uint8_t pmic_read_reg(uint8_t reg);
 void pmic_set_vcom(uint16_t vcom_mv);
 bool pmic_wait_power_good(unsigned long timeout_ms);
+void i2c_scan();
 void pmic_power_up();
 void pmic_power_down();
 void print_status();
@@ -95,7 +96,11 @@ void setup() {
   Serial.println("==================================================");
   Serial.println("Initiating PMIC Power-Up Sequence...");
 
-  // Force PMIC High-Voltage Rails (+15V, -15V, VGH, VGL, VCOM -1.31V)
+  // Scan first. If the PMIC does not answer, nothing below can work and it is
+  // better to see that immediately than to watch a power-up sequence that is
+  // talking to no one.
+  i2c_scan();
+
   pmic_power_up();
 
   Serial.println("\nEnter command ('help' for list of commands):");
@@ -141,6 +146,43 @@ uint8_t pmic_read_reg(uint8_t reg) {
   Wire.endTransmission(false);
   Wire.requestFrom(PMIC_I2C_ADDR, 1);
   return Wire.available() ? Wire.read() : 0xFF;
+}
+
+// Walks the bus and prints whatever answers.
+//
+// This matters more than it looks. The EE03 schematic has two separate I2C
+// buses: the XIAO's own (GPIO41 SCL / GPIO42 SDA), which carries only the
+// SHT40 temperature sensor at 0x44, and a second bus named ITE_I2C_SCL/SDA
+// that the IT8951 masters. The TPS651851's SCL/SDA are on the second one
+// (schematic sheet 6, pins 17/18), not on the XIAO's.
+//
+// If that reading is right, every I2C write this sketch has ever made to the
+// PMIC went nowhere, and no amount of fixing register addresses can change
+// VCOM. The scan settles it: 0x44 present and 0x68 absent means the PMIC is
+// unreachable from here, and TP2/TP3 have to be wired to the XIAO before any
+// of this code can do anything.
+void i2c_scan() {
+  Serial.println("\n--- I2C scan ---");
+  int found = 0;
+  for (uint8_t addr = 0x08; addr < 0x78; addr++) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      Serial.print("  0x");
+      Serial.print(addr, HEX);
+      if (addr == 0x44) Serial.print("  SHT40 temperature/humidity");
+      if (addr == PMIC_I2C_ADDR) Serial.print("  TPS651851 PMIC");
+      Serial.println();
+      found++;
+    }
+  }
+  if (found == 0) Serial.println("  nothing responded");
+
+  Wire.beginTransmission(PMIC_I2C_ADDR);
+  bool pmic_here = (Wire.endTransmission() == 0);
+  Serial.print("PMIC at 0x68: ");
+  Serial.println(pmic_here ? "REACHABLE"
+                           : "NOT REACHABLE -- see comment above i2c_scan()");
+  Serial.println("----------------");
 }
 
 // VCOM is a positive magnitude in units of 10 mV, split over two registers.
@@ -261,13 +303,15 @@ void handle_serial_cli() {
     if (input.length() == 0) return;
 
     if (input.equalsIgnoreCase("help")) {
-      Serial.println("\nCommands: 'on', 'off', 'status', 'vcom 1.31' (magnitude in volts)");
+      Serial.println("\nCommands: 'on', 'off', 'status', 'scan', 'vcom 1.31' (magnitude in volts)");
     } else if (input.equalsIgnoreCase("on")) {
       pmic_power_up();
     } else if (input.equalsIgnoreCase("off")) {
       pmic_power_down();
     } else if (input.equalsIgnoreCase("status")) {
       print_status();
+    } else if (input.equalsIgnoreCase("scan")) {
+      i2c_scan();
     } else if (input.startsWith("vcom ")) {
       float val = input.substring(5).toFloat();
       if (val < 0) val = -val;
