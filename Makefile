@@ -6,8 +6,10 @@ TOP_MODULE  = top
 RTL_DIR     = rtl
 
 SRCS        = $(RTL_DIR)/top.v \
-              $(RTL_DIR)/dvi_rx.v \
               $(RTL_DIR)/caster.v \
+              $(RTL_DIR)/epd_selftest.v \
+              $(RTL_DIR)/debug_ctrl.v \
+              $(RTL_DIR)/csr_master.v \
               $(RTL_DIR)/pixel_processing.v \
               $(RTL_DIR)/wvfmlut.v \
               $(RTL_DIR)/csr.v \
@@ -21,7 +23,6 @@ SRCS        = $(RTL_DIR)/top.v \
               $(RTL_DIR)/mulib/rtl/baseip/generic/mu_dsync.v \
               $(RTL_DIR)/mulib/rtl/baseip/generic/mu_dbsync.v \
               $(RTL_DIR)/memif.v \
-              $(RTL_DIR)/timing_generator.v \
               $(RTL_DIR)/sysclock.v \
               $(RTL_DIR)/vin.v \
               $(RTL_DIR)/mig_wrapper.v \
@@ -38,8 +39,16 @@ WAVE_FILE   = waveform.vcd
 
 all: $(TARGET).fs
 
+YOSYS_DEFS ?=
+
 $(TARGET).json: $(SRCS)
-	yosys -p "read_verilog -DCSR_SELFBOOT=1 -I$(RTL_DIR) -I$(RTL_DIR)/mulib/rtl $(SRCS); synth_gowin -json $(TARGET).json -top $(TOP_MODULE)"
+	yosys -p "read_verilog $(YOSYS_DEFS) -I$(RTL_DIR) -I$(RTL_DIR)/mulib/rtl $(SRCS); synth_gowin -json $(TARGET).json -top $(TOP_MODULE)"
+
+# Panel demo build: locally generated moving image, no VRAM and no DDR3.
+# Drives the whole panel each cycle, so it needs no pixel state at all.
+demo:
+	$(MAKE) clean
+	$(MAKE) YOSYS_DEFS="-DPANEL_TEST=1" $(TARGET).fs
 
 
 # 2. Place & Route via nextpnr-himbaechel
@@ -67,12 +76,17 @@ flash_bin: bin/glider_tang.fs
 	openFPGALoader -b tangprimer20k -f bin/glider_tang.fs
 
 # 8. Compile and run simulation
+# Checks the EPD bus timing (GDCLK / SDLE / SDCE0) against defines.vh over two
+# full frames. Set SIM_DEFS="-DFULL_DUMP" for a whole-hierarchy VCD -- that is
+# several GB over a 663k-clock frame, so it is off by default.
+SIM_DEFS ?=
+
 simulation: $(SRCS) $(TB_SRC)
-	iverilog -DSIMULATION -I$(RTL_DIR) -I$(RTL_DIR)/mulib/rtl -o $(SIM_TARGET) $(TB_SRC) $(SRCS)
+	iverilog -g2005 -DSIMULATION $(SIM_DEFS) -I$(RTL_DIR) -I$(RTL_DIR)/mulib/rtl -o $(SIM_TARGET) $(TB_SRC) $(SRCS)
 	./$(SIM_TARGET)
 	@echo "Simulation complete. $(WAVE_FILE) is ready."
 
 clean:
 	rm -f *.json *.fs $(SIM_TARGET) $(WAVE_FILE)
 
-.PHONY: all program flash program_bin flash_bin clean simulation
+.PHONY: all program flash program_bin flash_bin clean simulation demo

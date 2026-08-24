@@ -1,66 +1,78 @@
 `timescale 1ns / 1ps
+//
+// tb_top.v
+// Bring-up testbench for the front panel and the EPD output bus.
+//
+// There is no video input in this build: top.v generates VSYNC locally, vin.v
+// generates the test pattern, and csr.v comes out of reset already enabled with
+// the timing from defines.vh. The testbench supplies the clock and drives the
+// five buttons, which is the whole user interface.
+//
+// Four phases, in the order an operator would use them:
+//
+//   A  drive gate closed  GDOE/SDOE low and no gate clocks before BTN0
+//   B  free running       BTN0 opens the gate, two frames are checked against
+//                           GDCLK == vtotal, SDLE == vtotal, SDCE0 == hact*vact
+//   C  mode switch        BTN3 makes csr_master issue a full-screen SETMODE and
+//                           caster latches op_cmd / op_param / region
+//   D  single step        BTN4 stops the scan, BTN1 runs exactly one frame
+//
+// Frame boundaries are taken from GDSP, which goes low for exactly the vsync
+// lines once per frame.
+//
+// Run with:  make simulation
+// Set SIM_DEFS="-DFULL_DUMP" for a full-hierarchy VCD; by default only the
+// testbench level is dumped, because a whole-design trace over a 663k-clock
+// frame is several GB.
+
+`include "defines.vh"
 
 module tb_top;
 
-    // Inputs
-    reg CLK_IN;
-    reg LVDS_ODD_CK_P;
-    wire LVDS_ODD_CK_N;
-    reg [2:0] LVDS_ODD_P;
-    wire [2:0] LVDS_ODD_N;
-    reg [2:0] LVDS_EVEN_P;
-    wire [2:0] LVDS_EVEN_N;
-    reg DPI_PCLK;
-    reg DPI_DE;
-    reg DPI_VSYNC;
-    reg DPI_HSYNC;
-    reg [17:0] DPI_PIXEL;
-    reg SPI_CS;
-    reg SPI_SCK;
-    reg SPI_MOSI;
+    // `integer` matters: the defines are sized literals, so an unsized localparam
+    // inherits their 12-bit width and HTOTAL * VTOTAL silently wraps.
+    localparam integer VTOTAL = `DEFAULT_VFP + `DEFAULT_VSYNC + `DEFAULT_VBP + `DEFAULT_VACT;
+    localparam integer HTOTAL = `DEFAULT_HFP + `DEFAULT_HSYNC + `DEFAULT_HBP + `DEFAULT_HACT;
+    localparam integer ACTIVE = `DEFAULT_HACT * `DEFAULT_VACT;
 
-    // Outputs
+    // 40.5 MHz. sysclock.v bypasses the rPLL under SIMULATION and feeds CLK_IN
+    // straight through, so this is the actual core clock in simulation.
+    localparam real CLK_HALF = 12.346;
+
+    // One frame at 40.5 MHz, in ns. Used to size the waits.
+    localparam real FRAME_NS = 675000 * 2 * CLK_HALF;
+
+    // debug_ctrl debounces for 10 ms, so a press has to be held longer.
+    localparam real PRESS_NS = 15_000_000;
+
+    reg CLK_IN = 1'b0;
+    // Buttons are active low and released at power-up.
+    //   0 DRIVE   1 STEP   2 PATTERN   3 MODE   4 FREERUN
+    reg [4:0] BTN_N = 5'b11111;
+    reg SPI_CS = 1'b1;
+    reg SPI_SCK = 1'b0;
+    reg SPI_MOSI = 1'b0;
+
     wire [12:0] DDR_A;
-    wire [2:0] DDR_BA;
-    wire DDR_RAS_N;
-    wire DDR_CAS_N;
-    wire DDR_WE_N;
-    wire DDR_ODT;
-    wire DDR_RESET_N;
-    wire DDR_CKE;
-    wire DDR_LDM;
-    wire DDR_UDM;
-    wire DDR_CK_P;
-    wire DDR_CK_N;
-    wire EPD_GDOE;
-    wire EPD_GDCLK;
-    wire EPD_GDSP;
-    wire EPD_SDCLK;
-    wire EPD_SDLE;
-    wire EPD_SDOE;
+    wire [2:0]  DDR_BA;
+    wire DDR_RAS_N, DDR_CAS_N, DDR_WE_N, DDR_ODT;
+    wire DDR_RESET_N, DDR_CKE, DDR_LDM, DDR_UDM;
+    wire DDR_CK_P, DDR_CK_N;
+    wire EPD_GDOE, EPD_GDCLK, EPD_GDSP;
+    wire EPD_SDCLK, EPD_SDLE, EPD_SDOE;
     wire [15:0] EPD_SD;
     wire EPD_SDCE0;
     wire SPI_MISO;
+    wire REFRESH_DONE;
     wire [5:0] LED;
 
-    // Bidirs
     wire [15:0] DDR_DQ;
-    wire DDR_UDQS_P;
-    wire DDR_UDQS_N;
-    wire DDR_LDQS_P;
-    wire DDR_LDQS_N;
-    wire DDR_RZQ;
-    wire DDR_ZIO;
+    wire DDR_UDQS_P, DDR_UDQS_N, DDR_LDQS_P, DDR_LDQS_N;
+    wire DDR_RZQ, DDR_ZIO;
 
-    // LVDS differential logic
-    assign LVDS_ODD_CK_N = ~LVDS_ODD_CK_P;
-    assign LVDS_ODD_N    = ~LVDS_ODD_P;
-    assign LVDS_EVEN_N   = ~LVDS_EVEN_P;
-
-    // Instantiate the Unit Under Test (UUT)
     top #(
         .COLORMODE("MONO"),
-        .SIMULATION("FALSE")
+        .SIMULATION("TRUE")
     ) uut (
         .CLK_IN(CLK_IN),
         .DDR_DQ(DDR_DQ),
@@ -90,161 +102,186 @@ module tb_top;
         .EPD_SDOE(EPD_SDOE),
         .EPD_SD(EPD_SD),
         .EPD_SDCE0(EPD_SDCE0),
-        .LVDS_ODD_CK_P(LVDS_ODD_CK_P),
-        .LVDS_ODD_CK_N(LVDS_ODD_CK_N),
-        .LVDS_ODD_P(LVDS_ODD_P),
-        .LVDS_ODD_N(LVDS_ODD_N),
-        .LVDS_EVEN_P(LVDS_EVEN_P),
-        .LVDS_EVEN_N(LVDS_EVEN_N),
-        .DPI_PCLK(DPI_PCLK),
-        .DPI_DE(DPI_DE),
-        .DPI_VSYNC(DPI_VSYNC),
-        .DPI_HSYNC(DPI_HSYNC),
-        .DPI_PIXEL(DPI_PIXEL),
         .SPI_CS(SPI_CS),
         .SPI_SCK(SPI_SCK),
         .SPI_MOSI(SPI_MOSI),
         .SPI_MISO(SPI_MISO),
+        .REFRESH_DONE(REFRESH_DONE),
+        .BTN_N(BTN_N),
         .LED(LED)
     );
 
-    // Clock generators
-    initial begin
-        CLK_IN = 0;
-        forever #10 CLK_IN = ~CLK_IN; // 50 MHz
-    end
+    always #CLK_HALF CLK_IN = ~CLK_IN;
 
-    initial begin
-        DPI_PCLK = 0;
-        forever #20 DPI_PCLK = ~DPI_PCLK; // 25 MHz
-    end
+    wire clk = uut.clk_sys;
 
-    // SPI tasks for configuration
-    task spi_write_byte(input [7:0] data);
-        integer i;
+    integer errors = 0;
+
+    task fail(input [8*64-1:0] msg);
         begin
-            for (i = 7; i >= 0; i = i - 1) begin
-                SPI_MOSI = data[i];
-                #100; // SPI SCK half period
-                SPI_SCK = 1;
-                #100;
-                SPI_SCK = 0;
-            end
+            $display("[TB]   FAIL %0s", msg);
+            errors = errors + 1;
         end
     endtask
 
-    task spi_write_reg8(input [7:0] addr, input [7:0] data);
+    task press(input integer idx);
         begin
-            SPI_CS = 0;
-            #100;
-            spi_write_byte(addr);
-            spi_write_byte(data);
-            #100;
-            SPI_CS = 1;
-            #200; // CS high duration
+            BTN_N[idx] = 1'b0;
+            #PRESS_NS;
+            BTN_N[idx] = 1'b1;
+            #PRESS_NS;      // let the release debounce too
         end
     endtask
 
-    task spi_write_reg16(input [7:0] addr, input [15:0] data);
-        begin
-            SPI_CS = 0;
-            #100;
-            spi_write_byte(addr);
-            spi_write_byte(data[15:8]);
-            spi_write_byte(data[7:0]);
-            #100;
-            SPI_CS = 1;
-            #200; // CS high duration
+    // ---- EPD bus counters ---------------------------------------------------
+    // Same three quantities epd_selftest.v checks in fabric.
+
+    reg gdsp_d  = 1'b1;
+    reg gdclk_d = 1'b0;
+    reg sdle_d  = 1'b0;
+
+    integer gdclk_cnt  = 0;
+    integer sdle_cnt   = 0;
+    integer active_cnt = 0;
+
+    // Snapshot of the frame that just ended, plus a boundary counter the
+    // sequencer polls.
+    integer f_gdclk = 0;
+    integer f_sdle  = 0;
+    integer f_activ = 0;
+    integer frames  = 0;
+
+    always @(posedge clk) begin
+        gdsp_d  <= EPD_GDSP;
+        gdclk_d <= EPD_GDCLK;
+        sdle_d  <= EPD_SDLE;
+
+        if (EPD_GDSP && !gdsp_d) begin
+            f_gdclk = gdclk_cnt;
+            f_sdle  = sdle_cnt;
+            f_activ = active_cnt;
+            frames  = frames + 1;
+
+            // The edge landing on this cycle belongs to the new frame.
+            gdclk_cnt  = (EPD_GDCLK && !gdclk_d) ? 1 : 0;
+            sdle_cnt   = (EPD_SDLE  && !sdle_d)  ? 1 : 0;
+            active_cnt = (!EPD_SDCE0)            ? 1 : 0;
         end
-    endtask
-
-    // Continuous DPI Generator synchronous to DPI_PCLK
-    initial begin : dpi_gen
-        integer line_idx;
-        DPI_VSYNC = 0;
-        DPI_HSYNC = 0;
-        DPI_DE = 0;
-        DPI_PIXEL = 0;
-        LVDS_ODD_CK_P = 0;
-        LVDS_ODD_P = 3'b0;
-        LVDS_EVEN_P = 3'b0;
-
-        // Wait for SPI configuration to complete (about 50 us)
-        #100000;
-        
-        forever begin
-            // VSYNC pulse & Vertical Front Porch: 7 lines total (VSYNC 2 lines, VFP 5 lines)
-            for (line_idx = 0; line_idx < 7; line_idx = line_idx + 1) begin
-                DPI_VSYNC = (line_idx < 2) ? 1 : 0; // First 2 lines active VSYNC
-                // Send dummy line timing (87 PCLK cycles)
-                DPI_HSYNC = 1;
-                repeat (2) @(posedge DPI_PCLK);
-                DPI_HSYNC = 0;
-                repeat (85) @(posedge DPI_PCLK);
-            end
-            
-            // 240 Active lines
-            repeat (240) begin
-                // HSYNC pulse: 2 PCLK cycles
-                DPI_HSYNC = 1;
-                repeat (2) @(posedge DPI_PCLK);
-                DPI_HSYNC = 0;
-                
-                // Horizontal Back Porch: 2 PCLK cycles
-                repeat (2) @(posedge DPI_PCLK);
-                
-                // Active pixels: 80 pixels (80 PCLK cycles)
-                DPI_DE = 1;
-                DPI_PIXEL = 18'h12345;
-                repeat (80) @(posedge DPI_PCLK);
-                DPI_DE = 0;
-                
-                // Horizontal Front Porch: 3 PCLK cycles
-                repeat (3) @(posedge DPI_PCLK);
-            end
-            
-            // Vertical Back Porch: 5 lines
-            repeat (5) begin
-                DPI_HSYNC = 1;
-                repeat (2) @(posedge DPI_PCLK);
-                DPI_HSYNC = 0;
-                repeat (85) @(posedge DPI_PCLK);
-            end
+        else begin
+            if (EPD_GDCLK && !gdclk_d) gdclk_cnt  = gdclk_cnt + 1;
+            if (EPD_SDLE  && !sdle_d)  sdle_cnt   = sdle_cnt + 1;
+            if (!EPD_SDCE0)            active_cnt = active_cnt + 1;
         end
     end
 
-    // Simulation control and SPI configuration
+    task check_last_frame;
+        begin
+            $display("[TB]   gdclk=%0d (exp %0d)  sdle=%0d (exp %0d)  active=%0d (exp %0d)",
+                     f_gdclk, VTOTAL, f_sdle, VTOTAL, f_activ, ACTIVE);
+            if (f_gdclk != VTOTAL) fail("GDCLK count");
+            if (f_sdle  != VTOTAL) fail("SDLE count");
+            if (f_activ != ACTIVE) fail("SDCE0 active window");
+        end
+    endtask
+
+    // Wait for `n` more frame boundaries, or give up after `limit` frame times.
+    task wait_frames(input integer n, input integer limit);
+        integer target;
+        integer spins;
+        begin
+            target = frames + n;
+            spins  = 0;
+            while ((frames < target) && (spins < limit)) begin
+                #FRAME_NS;
+                spins = spins + 1;
+            end
+            if (frames < target)
+                fail("timed out waiting for a frame");
+        end
+    endtask
+
+    // ---- Sequence -----------------------------------------------------------
+
+    integer mark;
+
     initial begin
         $dumpfile("waveform.vcd");
+`ifdef FULL_DUMP
         $dumpvars(0, tb_top);
-        
-        SPI_CS = 1;
-        SPI_SCK = 0;
-        SPI_MOSI = 0;
+`else
+        $dumpvars(1, tb_top);
+`endif
 
-        // Wait for system reset to release (at 100 ns)
-        #200;
-        
-        $display("[TB] Writing registers over SPI...");
-        spi_write_reg8(16, 5);    // CSR_CFG_V_FP
-        spi_write_reg8(17, 2);    // CSR_CFG_V_SYNC
-        spi_write_reg8(18, 5);    // CSR_CFG_V_BP
-        spi_write_reg16(19, 240); // CSR_CFG_V_ACT
-        
-        spi_write_reg8(21, 3);    // CSR_CFG_H_FP
-        spi_write_reg8(22, 2);    // CSR_CFG_H_SYNC
-        spi_write_reg8(23, 2);    // CSR_CFG_H_BP
-        spi_write_reg16(24, 80);  // CSR_CFG_H_ACT
-        
-        spi_write_reg8(30, 1);    // CSR_CFG_MINDRV
-        
-        // Enable controller
-        spi_write_reg8(15, 1);    // CSR_ENABLE
-        $display("[TB] SPI configuration complete. Controller enabled.");
+        $display("[TB] htotal=%0d vtotal=%0d active=%0d (%0d clk/frame)",
+                 HTOTAL, VTOTAL, ACTIVE, HTOTAL * VTOTAL);
 
-        // Let the simulation run for 2.5 ms to capture multiple frames
-        #2500000;
-        $display("[TB] Simulation finished.");
+        // ---- A: drive gate closed at power-up ----
+        #(2 * FRAME_NS);
+        $display("[TB] A: drive gate closed at power-up");
+        if (EPD_GDOE) fail("GDOE high before BTN0");
+        if (EPD_SDOE) fail("SDOE high before BTN0");
+        if (frames != 0) fail("frames ran before BTN0");
+        if (gdclk_cnt != 0) fail("GDCLK toggled before BTN0");
+
+        // ---- B: BTN0 opens the gate, check two frames ----
+        $display("[TB] B: BTN0 -> drive enabled, free running");
+        press(0);
+        if (!EPD_GDOE) fail("GDOE still low after BTN0");
+        if (!EPD_SDOE) fail("SDOE still low after BTN0");
+        wait_frames(2, 6);
+        check_last_frame;
+        wait_frames(1, 6);
+        check_last_frame;
+
+        // ---- C: BTN3 issues a SETMODE over the internal CSR master ----
+        $display("[TB] C: BTN3 -> SETMODE via csr_master");
+        press(3);
+        // The op is latched into caster at the next vsync trigger.
+        wait_frames(2, 6);
+        $display("[TB]   mode_sel=%0d op_cmd=%0d op_param=%0d region=%0d,%0d..%0d,%0d",
+                 uut.dbg_mode_sel, uut.caster.op_cmd, uut.caster.op_param,
+                 uut.caster.op_left, uut.caster.op_top,
+                 uut.caster.op_right, uut.caster.op_bottom);
+        if (uut.dbg_mode_sel !== 2'd1)                        fail("mode_sel did not advance");
+        if (uut.caster.op_cmd !== `OP_EXT_SETMODE)            fail("op_cmd is not SETMODE");
+        if (uut.caster.op_param !== `SETMODE_FAST_MONO_NO_DITHER) fail("op_param wrong for mode 1");
+        if (uut.caster.op_left !== 12'd0)                     fail("op_left not 0");
+        if (uut.caster.op_top !== 12'd0)                      fail("op_top not 0");
+        if (uut.caster.op_right !== `INPUT_HACT * 4)          fail("op_right not full width");
+        if (uut.caster.op_bottom !== `INPUT_VACT)             fail("op_bottom not full height");
+
+        // ---- D: BTN4 stops free running, BTN1 steps one frame ----
+        $display("[TB] D: BTN4 -> manual, BTN1 -> one frame");
+        press(4);
+        if (uut.dbg_freerun !== 1'b0) fail("freerun did not clear");
+        // Let any frame already in flight finish, then confirm the scan stops.
+        #(2 * FRAME_NS);
+        mark = frames;
+        #(3 * FRAME_NS);
+        if (frames != mark) fail("scan kept running with FREERUN off");
+
+        press(1);
+        #(2 * FRAME_NS);
+        if (frames != mark + 1)
+            $display("[TB]   FAIL STEP ran %0d frames, expected 1", frames - mark);
+        if (frames != mark + 1) errors = errors + 1;
+        else begin
+            $display("[TB]   one frame stepped");
+            check_last_frame;
+        end
+
+        // ---- verdict ----
+        if (errors == 0)
+            $display("[TB] PASS - front panel and EPD bus behave as specified");
+        else
+            $display("[TB] FAIL - %0d problem(s)", errors);
+        $finish;
+    end
+
+    // Backstop in case a wait never completes.
+    initial begin
+        #(60 * FRAME_NS);
+        $display("[TB] FAIL - global timeout at frame %0d", frames);
         $finish;
     end
 

@@ -12,6 +12,7 @@
 // Glider top-level
 `default_nettype none
 `timescale 1ns / 1ps
+`include "defines.vh"
 
 module top(
     // Global clock input
@@ -50,12 +51,14 @@ module top(
     input wire SPI_SCK,
     input wire SPI_MOSI,
     output wire SPI_MISO,
-    // Handshake interface
-    input wire PMIC_READY,
+    // Handshake interface.
+    // PMIC_READY is gone: the XIAO firmware asserts it unconditionally at boot,
+    // so it never carried any information. The high voltage rails are brought
+    // up by hand and the drive gate is BTN0 instead. REFRESH_DONE is still
+    // driven for whatever wants to watch the scan.
     output wire REFRESH_DONE,
-    // Switch / Button interface
-    input wire BTN_T3,
-    // DEBUG
+    // Front panel: 5 buttons (active low) and 6 LEDs (active low)
+    input wire [4:0] BTN_N,
     output wire [5:0] LED
     );
     
@@ -88,7 +91,25 @@ module top(
         .locked(dcm_locked)
     );
     
-    wire c3_sys_rst = !dcm_locked;
+    // Reset sequencer: hold the whole design in reset until the PLL has been
+    // locked for 256 clocks, then release synchronously.
+    reg [7:0] rst_cnt = 8'd0;
+    reg rst_int = 1'b1;
+    always @(posedge clk_sys) begin
+        if (!dcm_locked) begin
+            rst_cnt <= 8'd0;
+            rst_int <= 1'b1;
+        end
+        else if (rst_cnt != 8'hFF) begin
+            rst_cnt <= rst_cnt + 1'b1;
+            rst_int <= 1'b1;
+        end
+        else begin
+            rst_int <= 1'b0;
+        end
+    end
+
+    wire c3_sys_rst = rst_int;
     assign mif_rst = c3_sys_rst;
 
 /*
@@ -115,77 +136,83 @@ module top(
     wire [31:0] vin_pixel;
     wire vin_valid;
     wire vin_ready;
-    wire [7:0] debug;
 
-    // Button T3 synchronization (Active Low on Tang Primer 20K: 0 when pressed)
-    wire btn_t3_sync;
-    mu_dsync btn_t3_sync_inst (
-        .iclk(1'b0),
-        .in(!BTN_T3), // 1 when pressed
-        .oclk(clk_sys),
-        .out(btn_t3_sync)
+    // Front panel. Owns the debounced button state and the LED readout; see
+    // debug_ctrl.v for the button and LED map.
+    wire dbg_drive_en;
+    wire dbg_freerun;
+    wire dbg_step;
+    wire [1:0] dbg_pattern;
+    wire [1:0] dbg_mode_sel;
+    wire dbg_mode_toggle;
+    wire selftest_led;
+
+    debug_ctrl #(
+        .CLK_HZ(40_500_000)
+    ) debug_ctrl (
+        .clk(clk_sys),
+        .rst(sys_rst),
+        .btn_n(BTN_N),
+        .selftest_led(selftest_led),
+        .drive_en(dbg_drive_en),
+        .freerun(dbg_freerun),
+        .step_pulse(dbg_step),
+        .pattern(dbg_pattern),
+        .mode_sel(dbg_mode_sel),
+        .mode_toggle(dbg_mode_toggle),
+        .led(LED)
     );
 
-    // Detect button T3 press edge
-    reg btn_t3_prev = 1'b0;
-    reg btn_trigger = 1'b0;
-    always @(posedge clk_sys) begin
-        btn_t3_prev <= btn_t3_sync;
-        btn_trigger <= (btn_t3_sync && !btn_t3_prev); // Pulse high on press
-    end
+    // Frame trigger. This build has no video receiver, so VSYNC is generated
+    // locally and the internal test pattern is the only pixel source.
+    //
+    // With FREERUN on the period below applies. With it off nothing fires until
+    // BTN1, which runs exactly one frame -- the mode to use with a scope or a
+    // logic analyser, and the safe way to put the first frames on a panel.
+    //
+    // One panel frame is 344 x 1927 + VS_DELAY = 662,897 clocks. The period here
+    // is a little longer so the scan always finishes and drops back to
+    // SCAN_IDLE, which is what makes REFRESH_DONE pulse.
+    //   675,000 clk @ 40.5 MHz = 60.00 Hz
+    localparam VSYNC_PERIOD = 20'd674_999;
+    localparam VSYNC_WIDTH  = 20'd512;
 
-    // VSYNC generator: continuous ~60Hz pulse + manual Button T3 trigger
-    reg [18:0] vsync_cnt = 19'd0;
+    reg [19:0] vsync_cnt = 20'd0;
     reg int_vsync = 1'b0;
     always @(posedge clk_sys) begin
         if (sys_rst) begin
-            vsync_cnt <= 19'd0;
+            vsync_cnt <= 20'd0;
             int_vsync <= 1'b0;
         end else begin
-            if (btn_trigger || vsync_cnt == 19'd449999) begin
-                vsync_cnt <= 19'd0;
+            if (dbg_step || (dbg_freerun && vsync_cnt == VSYNC_PERIOD)) begin
+                vsync_cnt <= 20'd0;
                 int_vsync <= 1'b1;
             end else begin
-                vsync_cnt <= vsync_cnt + 1'b1;
-                if (vsync_cnt > 19'd500)
+                // Saturate rather than wrap. With FREERUN off the counter would
+                // otherwise roll over and start emitting frames on its own.
+                if (vsync_cnt != VSYNC_PERIOD)
+                    vsync_cnt <= vsync_cnt + 1'b1;
+                if (vsync_cnt > VSYNC_WIDTH)
                     int_vsync <= 1'b0;
             end
         end
     end
 
-    wire dvi_pclk = clk_sys;
-    wire dvi_de = 1'b0;
-    wire dvi_vsync = int_vsync;
-    wire dvi_hsync = 1'b0;
-    wire [23:0] dvi_pixel = 24'b0;
-    wire dvi_locked = 1'b1;
-
     assign clk_epdc = clk_sys;
 
+    // Internal test pattern generator. Runs in the EPDC clock domain and is
+    // pulled by vin_ready, so no input FIFO or clock crossing is needed.
     vin #(
         .COLORMODE(COLORMODE)
     ) vin(
+        .clk(clk_sys),
         .rst(sys_rst),
-        // DPI signals mapped to decoded DVI/HDMI outputs
-        .dpi_vsync(dvi_vsync),
-        .dpi_hsync(dvi_hsync),
-        .dpi_pclk(dvi_pclk),
-        .dpi_de(dvi_de),
-        .dpi_pixel(dvi_pixel[17:0]), // Downscale to 18-bit for vin
-        // FPD-Link signals (unused/dummies)
-        .fpdlink_cp(1'b0),
-        .fpdlink_cn(1'b0),
-        .fpdlink_odd_p(3'b0),
-        .fpdlink_odd_n(3'b0),
-        .fpdlink_even_p(3'b0),
-        .fpdlink_even_n(3'b0),
-        // Output
+        .vsync(int_vsync),
+        .pattern(dbg_pattern),
         .v_vsync(vin_vsync),
-        .v_pclk(),
         .v_pixel(vin_pixel),
         .v_valid(vin_valid),
-        .v_ready(vin_ready),
-        .debug(debug)
+        .v_ready(vin_ready)
     );
 
 
@@ -410,49 +437,25 @@ module top(
     );
     assign pix_write_valid = !bo_fifo_empty;
     
-    // Synchronize PMIC_READY input to EPD clock domain
-    wire pmic_ready_sync;
-    mu_dsync pmic_ready_sync_inst (
-        .iclk(1'b0), // external/async input
-        .in(PMIC_READY),
+    // Drive gate.
+    //
+    // The scan will not start, and GDOE/SDOE stay low, until this is high. The
+    // PMIC handshake used to sit here; it was removed because the XIAO asserts
+    // PMIC_READY unconditionally in setup(), so gating on it only looked safe.
+    // The operator now owns the gate through BTN0, which starts OFF, so the EPD
+    // bus is idle at power-up and the panel is only ever driven deliberately.
+    //
+    // ddr_calib_done_epdc is still in the term. It is tied high by the
+    // mig_wrapper stub today and becomes real when the Gowin DDR3 IP lands.
+    wire drive_en_epdc;
+    mu_dsync drive_en_sync (
+        .iclk(clk_sys),
+        .in(dbg_drive_en),
         .oclk(clk_epdc),
-        .out(pmic_ready_sync)
+        .out(drive_en_epdc)
     );
+    wire sys_ready = drive_en_epdc && ddr_calib_done_epdc;
 
-    // EPD controller
-    // Unconditional ready for continuous free-running scan
-    wire sys_ready = 1'b1;
-
-
-    
-    // Drive REFRESH_DONE (HIGH when idle, LOW when actively scanning)
-    assign REFRESH_DONE = (dbg_scan_state == 2'b00);
-
-    wire spi_ncs;
-    wire spi_sck;
-    wire spi_mosi;
-    wire spi_miso;
-    mu_dsync spi_cs_sync (
-        .iclk(1'b0), // external
-        .in(!SPI_CS),
-        .oclk(clk_epdc),
-        .out(spi_ncs)
-    );
-    wire spi_cs = !spi_ncs;
-
-    mu_dsync spi_sck_sync (
-        .iclk(1'b0), // external
-        .in(SPI_SCK),
-        .oclk(clk_epdc),
-        .out(spi_sck)
-    );
-
-    mu_dsync spi_mosi_sync (
-        .iclk(1'b0), // external
-        .in(SPI_MOSI),
-        .oclk(clk_epdc),
-        .out(spi_mosi)
-    );
     
     wire [1:0] dbg_scan_state;
     wire [10:0] dbg_scan_h_cnt;
@@ -461,8 +464,90 @@ module top(
     wire [7:0] dbg_spi_req_addr;
     wire [7:0] dbg_spi_req_wdata;
 
-    wire epdc_rst_sync = 1'b0;
-    wire epdc_rst = 1'b0;
+    // Drive REFRESH_DONE (HIGH when idle, LOW when actively scanning)
+    assign REFRESH_DONE = (dbg_scan_state == 2'b00);
+
+    wire epdc_rst = rst_int;
+
+    // CSR access. The external SPI pins are still wired up for an MCU, but the
+    // mode button needs to issue a SETMODE op with no MCU present, so an
+    // internal master drives the same three signals and takes priority while it
+    // is busy. See csr_master.v.
+    wire spi_ncs;
+    wire ext_spi_sck;
+    wire ext_spi_mosi;
+    wire spi_miso;
+    mu_dsync spi_cs_sync (
+        .iclk(1'b0), // external
+        .in(!SPI_CS),
+        .oclk(clk_epdc),
+        .out(spi_ncs)
+    );
+    wire ext_spi_cs = !spi_ncs;
+
+    mu_dsync spi_sck_sync (
+        .iclk(1'b0), // external
+        .in(SPI_SCK),
+        .oclk(clk_epdc),
+        .out(ext_spi_sck)
+    );
+
+    mu_dsync spi_mosi_sync (
+        .iclk(1'b0), // external
+        .in(SPI_MOSI),
+        .oclk(clk_epdc),
+        .out(ext_spi_mosi)
+    );
+
+    // Mode index -> SETMODE parameter. Index 0 is fast mono bayer because that
+    // is what OP_INIT already leaves every pixel in.
+    wire [7:0] mode_param =
+        (dbg_mode_sel == 2'd0) ? `SETMODE_FAST_MONO_BAYER :
+        (dbg_mode_sel == 2'd1) ? `SETMODE_FAST_MONO_NO_DITHER :
+        (dbg_mode_sel == 2'd2) ? `SETMODE_FAST_MONO_BLUE_NOISE :
+                                 `SETMODE_FAST_GREY;
+
+    // debug_ctrl hands over a toggle rather than a pulse, because a single cycle
+    // pulse can be swallowed by a two flop level synchroniser. Both edges of the
+    // synchronised toggle mean "the mode changed".
+    wire mode_toggle_epdc;
+    mu_dsync mode_toggle_sync (
+        .iclk(clk_sys),
+        .in(dbg_mode_toggle),
+        .oclk(clk_epdc),
+        .out(mode_toggle_epdc)
+    );
+    reg mode_toggle_d;
+    always @(posedge clk_epdc)
+        mode_toggle_d <= mode_toggle_epdc;
+    wire mode_change_pulse = mode_toggle_epdc ^ mode_toggle_d;
+
+    wire int_spi_busy;
+    wire int_spi_cs;
+    wire int_spi_sck;
+    wire int_spi_mosi;
+    csr_master csr_master (
+        .clk(clk_epdc),
+        .rst(epdc_rst),
+        .start(mode_change_pulse),
+        .mode_param(mode_param),
+        .busy(int_spi_busy),
+        .spi_cs(int_spi_cs),
+        .spi_sck(int_spi_sck),
+        .spi_mosi(int_spi_mosi)
+    );
+
+    // Force the external clock to the mode 3 idle level while its chip select is
+    // deasserted. Without this the mux below produces a phantom rising edge the
+    // moment the internal master takes over -- csr.v counts it as a bit and every
+    // byte of the transfer lands one bit out of place.
+    wire ext_spi_sck_idle = ext_spi_cs ? 1'b1 : ext_spi_sck;
+
+    wire spi_cs   = int_spi_busy ? int_spi_cs   : ext_spi_cs;
+    wire spi_sck  = int_spi_busy ? int_spi_sck  : ext_spi_sck_idle;
+    wire spi_mosi = int_spi_busy ? int_spi_mosi : ext_spi_mosi;
+    
+
 
 
 
@@ -516,105 +601,30 @@ module top(
         .dbg_spi_req_wdata(dbg_spi_req_wdata)
     );
     
-//    assign EPD_SD[7:0] = epd_sd_caster[7:0];
-//    assign EPD_SD[15:8] = debug;
     assign EPD_SD = epd_sd_caster;
-    // Debug
-    wire [35:0] chipscope_control0;
-    /*
-    chipscope_icon icon (
-        .CONTROL0(chipscope_control0) // INOUT BUS [35:0]
+
+    // Self-check on the EPD bus. Verifies GDCLK / SDLE / SDCE0 against the
+    // configured timing every frame and reports on LED1, so the output can be
+    // validated with no logic analyser and no panel attached.
+    wire selftest_pass;
+    wire [1:0] selftest_fail;
+    epd_selftest #(
+        .EXP_VTOTAL(`DEFAULT_VACT + `DEFAULT_VFP + `DEFAULT_VSYNC + `DEFAULT_VBP),
+        .EXP_ACTIVE(`DEFAULT_HACT * `DEFAULT_VACT),
+        .BLINK_DIV(25'd10_125_000)
+    ) epd_selftest (
+        .clk(clk_epdc),
+        .rst(epdc_rst),
+        .epd_gdsp(EPD_GDSP),
+        .epd_gdclk(EPD_GDCLK),
+        .epd_sdle(EPD_SDLE),
+        .epd_sdce0(EPD_SDCE0),
+        .pass(selftest_pass),
+        .fail_code(selftest_fail),
+        .led(selftest_led)
     );
-    */
-    
-    wire [31:0] ila_signals;
-    /*
-    chipscope_ila ila (
-        .CONTROL(chipscope_control0), // INOUT BUS [35:0]
-        .CLK(clk_epdc),
-        .TRIG0(ila_signals)
-    );
-    */
 
-//    assign ila_signals[0] = c3_sys_rst;
-//    assign ila_signals[1] = ddr_calib_done;
-//    assign ila_signals[2] = sys_rst;
-//    assign ila_signals[3] = memif_error;
-//    // assign ila_signals[4] = v_vs;
-//    // assign ila_signals[5] = v_hs;
-//    // assign ila_signals[6] = v_de;
-////    assign ila_signals[7] = v_pclk;
-////    assign ila_signals[8] = dbg_hsync;
-////    assign ila_signals[9] = dbg_vsync;
-////    assign ila_signals[10] = dbg_de;
-////    assign ila_signals[11] = dbg_pll_lck;
-//
-//    //assign ila_signals[6:4] = debug[2:0];
-//
-//   assign ila_signals[7] = vin_ready; // vi_fifo_rd_en
-//   assign ila_signals[8] = vin_valid; // vi_fifo_rd not empty
-//   assign ila_signals[9] = memif_enable;
-//   assign ila_signals[10] = memif_trigger;
-//   assign ila_signals[11] = pix_read_valid; // bi_fifo_wr_en
-//   assign ila_signals[12] = bi_fifo_full;
-//   assign ila_signals[13] = bi_ready;
-//   assign ila_signals[14] = bi_valid; // bi_fifo_rd not empty
-//   assign ila_signals[15] = bo_valid;
-//   assign ila_signals[16] = bo_fifo_full;
-//   assign ila_signals[17] = pix_write_ready; // bo_fifo_rd_en
-//   assign ila_signals[18] = bo_fifo_empty;
-////   //assign ila_signals[19] = dbg_scan_state[0];
-//   assign ila_signals[19] = dbg_scan_state[1];
-////   //assign ila_signals[15] = vin_vsync;
-//   assign ila_signals[20] = vin_pixel[15]; // sneak peak of pixel
-//
-//    assign ila_signals[4] = spi_cs;
-//    assign ila_signals[5] = spi_sck;
-//    assign ila_signals[6] = spi_mosi;
-//    
-//    assign ila_signals[23:21] = 3'd0; 
-////
-////    assign ila_signals[7] = dbg_spi_req_wen;
-////    assign ila_signals[15:8] = dbg_spi_req_addr;
-////    assign ila_signals[23:16] = dbg_spi_req_wdata;
-////    
-////    assign ila_signals[31:24] = dbg_scan_v_cnt[7:0];
-////    assign ila_signals[31:21] = dbg_scan_v_cnt;
-//    assign ila_signals[31:24] = debug;
-
-
-    assign ila_signals[0] = vin_vsync;
-    assign ila_signals[1] = vin_valid;
-    assign ila_signals[2] = vin_ready;
-    assign ila_signals[31:3] = vin_pixel[31:3];
-
-    // Multi-status LED assignments (active-low: logic 0 turns ON the LED, logic 1 turns OFF)
-    // Board Silkscreen mapping: LED[0]->D1, LED[1]->D2, LED[2]->D3, LED[3]->D4, LED[4]->D5, LED[5]->D6
-    assign LED[0] = ~sys_ready;           // LED D1 (L16): ON when System is ready (DDR3 ok)
-    assign LED[1] = 1'b0;                 // LED D2 (L14): ON (FPGA System Clock Active)
-    assign LED[2] = ~ddr_calib_done_epdc; // LED D3 (N14): ON when DDR3 memory calibration succeeds
-    assign LED[3] = 1'b1;                 // LED D4 (N16): OFF (Spare/Unused)
-    // Stretch LED D5 (REFRESH_DONE) pulse to 500ms (13.5M clock cycles at 27MHz) for visual checking
-    reg [23:0] d5_stretch_cnt = 24'd0;
-    reg d5_led_active = 1'b0;
-    always @(posedge clk_sys) begin
-        if (btn_trigger || !REFRESH_DONE) begin
-            d5_stretch_cnt <= 24'd13_500_000; // 0.5 sec
-            d5_led_active <= 1'b1;
-        end else if (d5_stretch_cnt > 0) begin
-            d5_stretch_cnt <= d5_stretch_cnt - 1'b1;
-            d5_led_active <= 1'b1;
-        end else begin
-            d5_led_active <= 1'b0;
-        end
-    end
-
-    assign LED[4] = !d5_led_active;       // LED D5 (A13): ON for 0.5s when T3 Button is pressed / Refresh triggers!
-    assign LED[5] = 1'b0;                 // LED D6 (C13): ON (Handshake bypassed)
-
-
-
-
+    // LED[5:0] is driven by debug_ctrl, already active low.
 
 endmodule
 `default_nettype wire

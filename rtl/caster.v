@@ -289,8 +289,12 @@ module caster(
     always @(posedge clk) begin
         case (scan_state)
         SCAN_IDLE: begin
-            // Free-running continuous scan: Immediately start scanning without waiting
-            scan_state <= SCAN_WAITING;
+            // Wait for the PMIC rails, the enable bit and the incoming video
+            // vsync before starting a frame. This is what keeps the panel scan
+            // phase-locked to the input and what makes REFRESH_DONE meaningful.
+            if (sys_ready && global_en && vin_vsync) begin
+                scan_state <= SCAN_WAITING;
+            end
             scan_h_cnt <= 0;
             scan_v_cnt <= 0;
         end
@@ -326,10 +330,7 @@ module caster(
         SCAN_RUNNING: begin
             if (scan_h_cnt == htotal - 1) begin
                 if (scan_v_cnt == vtotal - 1) begin
-                    // Immediately loop back to SCAN_WAITING for continuous uninterrupted scan
-                    scan_state <= SCAN_WAITING;
-                    scan_h_cnt <= 0;
-                    scan_v_cnt <= 0;
+                    scan_state <= SCAN_IDLE;
                 end
                 else begin
                     scan_h_cnt <= 0;
@@ -339,8 +340,10 @@ module caster(
             else begin
                 scan_h_cnt <= scan_h_cnt + 1;
             end
-            // Keep frame valid active
-            frame_valid <= 1'b1;
+            // Kill frame output if fifo underrun is detected
+            if ((vin_ready && !vin_valid) && (bi_ready && !bi_valid)) begin
+                frame_valid <= 1'b0;
+            end
         end
 
         default: begin
@@ -362,24 +365,24 @@ module caster(
     end
 
     /* verilator lint_off width */
-    wire scan_in_vsync = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_vsync = (scan_state == SCAN_RUNNING) ? (
         (scan_v_cnt >= vfp) && 
         (scan_v_cnt < (vfp + vsync))) : 1'b0;
-    wire scan_in_vbp = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_vbp = (scan_state == SCAN_RUNNING) ? (
         (scan_v_cnt >= (vfp + vsync)) &&
         (scan_v_cnt < (vfp + vsync + vbp))) : 1'b0;
-    wire scan_in_vact = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_vact = (scan_state == SCAN_RUNNING) ? (
         (scan_v_cnt >= (vfp + vsync + vbp))) : 1'b0;
 
-    wire scan_in_hfp = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_hfp = (scan_state == SCAN_RUNNING) ? (
         (scan_h_cnt < hfp)) : 1'b0;
-    wire scan_in_hsync = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_hsync = (scan_state == SCAN_RUNNING) ? (
         (scan_h_cnt >= hfp) &&
         (scan_h_cnt < (hfp + hsync))) : 1'b0;
-    wire scan_in_hbp = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_hbp = (scan_state == SCAN_RUNNING) ? (
         (scan_h_cnt >= (hfp + hsync)) &&
         (scan_h_cnt < (hfp + hsync + hbp))) : 1'b0;
-    wire scan_in_hact = (scan_state != SCAN_IDLE) ? (
+    wire scan_in_hact = (scan_state == SCAN_RUNNING) ? (
         (scan_h_cnt >= (hfp + hsync + hbp))) : 1'b0;
     /* verilator lint_on width */
 
@@ -395,7 +398,7 @@ module caster(
     // STAGE 1
     /* verilator lint_off width */
     /* verilator lint_off width */
-    wire s1_hactive = (scan_state != SCAN_IDLE) ? (
+    wire s1_hactive = (scan_state == SCAN_RUNNING) ? (
         (scan_h_cnt >= (hfp + hsync + hbp - PIPELINE_DELAY)) &&
         (scan_h_cnt < (htotal - PIPELINE_DELAY))) : 1'b0;
     /* verilator lint_on width */
@@ -405,7 +408,10 @@ module caster(
     wire [10:0] v_cnt_offset = scan_v_cnt - (vfp + vsync + vbp);
     /* verilator lint_on width */
 
-    wire s1_active = scan_in_vact && s1_hactive && (h_cnt_offset[0] == 1'b0) && (v_cnt_offset[0] == 1'b0);
+    // 2x upscaling is horizontal-by-wiring (see the OUTPUT_16B block at the end of
+    // this file) and vertical-by-line-buffer. So the pipeline still advances once
+    // per scan step (one core word = 4 distinct pixels), but only on even lines.
+    wire s1_active = scan_in_vact && s1_hactive && (v_cnt_offset[0] == 1'b0);
     // Essentially a scan_in_act but few cycles eariler.
     assign vin_ready = s1_active;
     assign bi_ready = s1_active;
@@ -416,11 +422,10 @@ module caster(
         for (i = 0; i < 4; i = i + 1) begin: gen_op_valid_assign
             wire [1:0] offset = i;
             wire [12:0] h_pixel = {h_cnt_offset, offset};
-            wire [12:0] h_pixel_vram = h_pixel >> 1;
             wire [10:0] v_cnt_offset_vram = v_cnt_offset >> 1;
             assign s1_op_valid[i] =
                 op_valid &&
-                (h_pixel_vram >= {1'b0, op_left}) && (h_pixel_vram < {1'b0, op_right}) &&
+                (h_pixel >= {1'b0, op_left}) && (h_pixel < {1'b0, op_right}) &&
                 ({1'b0, v_cnt_offset_vram} >= op_top) && ({1'b0, v_cnt_offset_vram} < op_bottom);
         end
     endgenerate
@@ -428,12 +433,12 @@ module caster(
     // OSD: 12 bit address, 256x128 size, each byte has 8 pixels -> 32x128
     /* verilator lint_off width */
     wire [6:0] osd_ram_y_offset = (v_cnt_offset >> 1) - osd_top;
-    wire [4:0] osd_ram_x_offset = (h_cnt_offset[10:1] >> 1) - osd_left;
+    wire [4:0] osd_ram_x_offset = h_cnt_offset[10:1] - osd_left;
     /* verilator lint_on width */
     assign osd_rd_addr = {osd_ram_y_offset, osd_ram_x_offset};
     wire s1_osd_valid =
         osd_en &&
-        (({1'b0, h_cnt_offset} >> 1) >= osd_left) && (({1'b0, h_cnt_offset} >> 1) < osd_right) &&
+        ({1'b0, h_cnt_offset} >= osd_left) && ({1'b0, h_cnt_offset} < osd_right) &&
         (({1'b0, v_cnt_offset} >> 1) >= osd_top) && (({1'b0, v_cnt_offset} >> 1) < osd_bottom);
 
     // Move to next stage
@@ -513,8 +518,10 @@ module caster(
         assign by_y_pos = v_cnt_mod_3;
     end
     else if ((COLORMODE == "MONO") || (COLORMODE == "RGBW")) begin: gen_mono_counter
-        assign by_x_pos = scan_h_cnt[3:1];
-        assign bn_x_pos = scan_h_cnt[4:1];
+        // Horizontal: one scan step == 4 distinct pixels again, so no halving.
+        // Vertical: still halved, each source line covers two panel lines.
+        assign by_x_pos = scan_h_cnt[2:0];
+        assign bn_x_pos = scan_h_cnt[3:0];
         assign bn_x_pos_sel = 2'b0;
         assign by_y_pos = scan_v_cnt[3:1];
     end
@@ -537,7 +544,7 @@ module caster(
     ) line_reverse (
         .clk(clk),
         .rst(vin_vsync),
-        .width(hact[10:1]),
+        .width(hact[9:0]),
         .pix_in(s2_vin_overlayed),
         .pix_in_en(s2_active),
         // Delayed by exactly 1 line
@@ -739,9 +746,8 @@ module caster(
 
     reg [7:0] current_pixel;
     always @(posedge clk) begin
-        if (s4_active) begin
-            current_pixel <= pixel_comb;
-        end
+        // 8'h00 == VCOM on every pixel, i.e. no drive outside the active area
+        current_pixel <= (s4_active) ? pixel_comb : 8'h00;
         bo_pixel <= bo_pixel_comb;
     end
 
@@ -751,89 +757,164 @@ module caster(
         s5_active <= s4_active;
     assign bo_valid = s5_active;
 
-    // 2x Vertical Scaling Line Buffer
+    // 2x vertical scaling line buffer.
+    // Even panel lines come straight from the pipeline and are stored here;
+    // odd panel lines replay the stored line.
+    //
+    // The pointer is derived combinationally from the scan counter so that the
+    // write index and the read index refer to the same column with no reset
+    // ordering hazard. The read address is one ahead of the write address to
+    // compensate for the one cycle of RAM output latency -- without this the
+    // odd lines come out shifted by one word (8 panel pixels) against the even
+    // lines, which shows up as a comb artifact.
+    /* verilator lint_off width */
+    wire [9:0] scale_ptr = scan_h_cnt - (hfp + hsync + hbp);
+    /* verilator lint_on width */
+
     reg [7:0] scale_line_buf [0:1023];
-    reg [9:0] scale_line_ptr;
-    
+    reg [7:0] odd_line_pixel;
+
     always @(posedge clk) begin
-        if (scan_in_hact) begin
-            if (scan_h_cnt == (hfp + hsync + hbp)) begin
-                scale_line_ptr <= 0;
-            end else begin
-                scale_line_ptr <= scale_line_ptr + 1;
+        if (scan_in_hact && (v_cnt_offset[0] == 1'b0)) begin
+            scale_line_buf[scale_ptr] <= current_pixel;
+        end
+    end
+
+    always @(posedge clk) begin
+        odd_line_pixel <= scale_line_buf[scale_ptr + 10'd1];
+    end
+
+`ifdef PANEL_TEST
+    // ------------------------------------------------------------------
+    // Panel demo / bring-up mode. Ignores the pipeline and the VRAM entirely.
+    //
+    // The pixel state normally kept in DDR3 only exists to track how far each
+    // pixel has been driven when arbitrary video arrives. Here the picture is
+    // generated locally, so the target value of every pixel is already known
+    // and the whole screen can simply be redrawn each cycle:
+    //
+    //   DRIVE phase (TEST_DRIVE_FRAMES)  every pixel driven toward its target
+    //   REST  phase (TEST_REST_FRAMES)   no drive, let the panel settle
+    //
+    // A box walks across the screen every cycle, so the result is a moving
+    // image with no framebuffer of any kind.
+    // ------------------------------------------------------------------
+    localparam TEST_DRIVE_FRAMES = 7'd12;   // 12 frames @60Hz = 200 ms
+    localparam TEST_REST_FRAMES  = 7'd12;
+
+    reg [6:0] test_frame;
+    reg [9:0] test_box_x;
+    always @(posedge clk) begin
+        if (rst) begin
+            test_frame  <= 7'd0;
+            test_box_x  <= 10'd0;
+        end
+        else if (vsync_trigger) begin
+            if (test_frame == (TEST_DRIVE_FRAMES + TEST_REST_FRAMES - 1)) begin
+                test_frame <= 7'd0;
+                // advance the box by 8 words (32 source px) per cycle
+                test_box_x <= (test_box_x >= (hact - 10'd72)) ? 10'd0
+                                                             : test_box_x + 10'd8;
+            end
+            else begin
+                test_frame <= test_frame + 1'b1;
             end
         end
     end
-    
-    always @(posedge clk) begin
-        if (scan_in_hact && (v_cnt_offset[0] == 1'b0)) begin
-            scale_line_buf[scale_line_ptr] <= current_pixel;
-        end
-    end
-    
-    reg [7:0] odd_line_pixel;
-    always @(posedge clk) begin
-        if (scan_in_hact && (v_cnt_offset[0] == 1'b1)) begin
-            odd_line_pixel <= scale_line_buf[scale_line_ptr];
-        end
-    end
-    
+
+    wire test_driving = (test_frame < TEST_DRIVE_FRAMES);
+
+    // Box: 64 words (256 px) wide, 400 panel lines tall
+    /* verilator lint_off WIDTH */
+    wire test_in_box = (h_cnt_offset >= test_box_x) &&
+                       (h_cnt_offset <  test_box_x + 10'd64) &&
+                       (v_cnt_offset >= 11'd600) && (v_cnt_offset < 11'd1000);
+    /* verilator lint_on WIDTH */
+
+    // 2'b01 = VNEG (toward black), 2'b10 = VPOS (toward white), 2'b00 = no drive
+    wire [1:0] test_drv = !test_driving ? 2'b00 :
+                          test_in_box   ? 2'b10 : 2'b01;
+
+    wire [7:0] epd_out_pixel = {4{test_drv}};
+`else
     wire [7:0] epd_out_pixel = (v_cnt_offset[0] == 1'b1) ? odd_line_pixel : current_pixel;
+`endif
 
     // End of pipeline
-    wire clk_en = (scan_in_hfp || scan_in_hsync || scan_in_hact);
-
 `ifdef OUTPUT_16B
-    reg out_clk;
-    reg [7:0] last_pix;
+    // 16-bit source bus with 2x horizontal upscaling done by wiring.
+    //
+    // One core word is 4 distinct pixels x 2 bit = 8 bit. Duplicating every
+    // 2-bit field gives 16 bit = 8 panel pixels, which is exactly one SDCLK
+    // cycle. So SDCLK runs at the core clock and the pipeline needs no stall:
+    //
+    //   core   p3 p2 p1 p0
+    //   panel  p3 p3 p2 p2 p1 p1 p0 p0
     reg [15:0] out_sd;
     reg out_sdce;
     always @(posedge clk) begin
-        if (clk_en) begin
-            out_clk <= ~out_clk;
-        end
-        else begin
-            out_clk <= 1'b0;
-        end
-        if (out_clk) begin
-            // next edge is falling edge, output data
-            out_sd <= {last_pix, epd_out_pixel};
-            out_sdce <= !scan_in_act;
-        end
-        else begin
-            // next edge is rising edge, buffer data
-            last_pix <= epd_out_pixel;
-        end
+        out_sd <= {epd_out_pixel[7:6], epd_out_pixel[7:6],
+                   epd_out_pixel[5:4], epd_out_pixel[5:4],
+                   epd_out_pixel[3:2], epd_out_pixel[3:2],
+                   epd_out_pixel[1:0], epd_out_pixel[1:0]};
+        out_sdce <= !scan_in_act;
     end
-    assign epd_sdclk = out_clk;
     assign epd_sd = out_sd;
     assign epd_sdce0 = out_sdce;
+
+    // Emit SDCLK through an output DDR register so the clock leaves from the
+    // IOB instead of through general routing. D0=0/D1=1 makes SDCLK fall on the
+    // rising edge of clk (where out_sd changes) and rise half a cycle later, in
+    // the middle of the data valid window.
+`ifdef SIMULATION
+    assign epd_sdclk = ~clk;
+`else
+    ODDR sdclk_oddr (
+        .Q0(epd_sdclk),
+        .Q1(),
+        .D0(1'b0),
+        .D1(1'b1),
+        .TX(1'b0),
+        .CLK(clk)
+    );
+`endif
 `else
     // Clock output
     assign epd_sdclk = ~clk;
 
+    /* verilator lint_off UNUSED */
+    wire clk_en = (scan_in_hfp || scan_in_hsync || scan_in_hact);
+    /* verilator lint_on UNUSED */
     assign epd_sd = {8'd0, epd_out_pixel}; // In 8-bit mode, only use lower 8-bit
     assign epd_sdce0 = (scan_in_act) ? 1'b0 : 1'b1;
 `endif
 
-    // mode
-    //assign epd_gdoe = (scan_in_vsync || scan_in_vbp || scan_in_vact) ? 1'b1 : 1'b0;
-    assign epd_gdoe = 1'b1;
-    // Gate Driver Clock (EPD_GDCLK / CKV - Pin A15)
-    // Direct combinational wire to guarantee steady 1.65V DC multimeter reading on pin A15
-    assign epd_gdclk = scan_h_cnt[4];
+    // Output enables. Held low until the PMIC reports its rails are up, so the
+    // panel is never driven while the high voltage supplies are ramping.
+    assign epd_gdoe = sys_ready;
+    assign epd_sdoe = sys_ready;
 
+    // ckv - exactly one pulse per line, delayed by one cycle
+    wire epd_gdclk_pre = (scan_in_hsync || scan_in_hbp || scan_in_hact) ? 1'b1 : 1'b0;
+    reg epd_gdclk_delay;
+    always @(posedge clk)
+        epd_gdclk_delay <= epd_gdclk_pre;
+    assign epd_gdclk = epd_gdclk_delay;
 
-
-
-    // spv
-    assign epd_gdsp = (scan_in_vsync) ? 1'b0 : 1'b1;
-    //assign epd_sdoe = epd_gdoe;
-    assign epd_sdoe = 1'b1;
-    
-    // stl
-    
-    assign epd_sdle = (scan_in_hsync) ? 1'b1 : 1'b0;
+    // spv / stl
+    //
+    // Registered so that every panel output leaves the core with the same one
+    // cycle of delay from the scan counters. epd_sd and epd_sdce0 are registered
+    // in the output block above and epd_gdclk just below, so a combinational
+    // SDLE would land one clock ahead of the data it is supposed to latch.
+    reg epd_gdsp_r;
+    reg epd_sdle_r;
+    always @(posedge clk) begin
+        epd_gdsp_r <= (scan_in_vsync) ? 1'b0 : 1'b1;
+        epd_sdle_r <= (scan_in_hsync) ? 1'b1 : 1'b0;
+    end
+    assign epd_gdsp = epd_gdsp_r;
+    assign epd_sdle = epd_sdle_r;
 
     assign b_trigger = (scan_state == SCAN_WAITING);
 

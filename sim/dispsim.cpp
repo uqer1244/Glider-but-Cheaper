@@ -100,7 +100,7 @@ void dispsim_render() {
 
 void dispsim_apply(uint32_t *pixels, const uint8_t gdoe,
         const uint8_t gdclk, const uint8_t gdsp, const uint8_t sdle,
-        const uint8_t sdoe, const uint8_t sd, const uint8_t sdce0,
+        const uint8_t sdoe, const uint16_t sd, const uint8_t sdce0,
         const uint16_t dbg) {
     // SDLE = Hsync
     // GDSP = ~ Vsync
@@ -130,10 +130,9 @@ void dispsim_apply(uint32_t *pixels, const uint8_t gdoe,
         dispsim_set_pixel(pixels, x_counter++, y_counter, (dbg >> 4) & 0xf);
         dispsim_set_pixel(pixels, x_counter++, y_counter, (dbg >> 0) & 0xf);
 #else
-        dispsim_set_pixel(pixels, x_counter++, y_counter, (sd >> 6) & 0x3);
-        dispsim_set_pixel(pixels, x_counter++, y_counter, (sd >> 4) & 0x3);
-        dispsim_set_pixel(pixels, x_counter++, y_counter, (sd >> 2) & 0x3);
-        dispsim_set_pixel(pixels, x_counter++, y_counter, (sd >> 0) & 0x3);
+        // 16-bit bus: 8 panel pixels per SDCLK, MSB first
+        for (int b = 14; b >= 0; b -= 2)
+            dispsim_set_pixel(pixels, x_counter++, y_counter, (sd >> b) & 0x3);
 #endif
         line_valid = true;
     }

@@ -1,3 +1,5 @@
+`ifndef GLIDER_DEFINES_VH
+`define GLIDER_DEFINES_VH
 
 `define OP_INIT             2'd0 // Initial power up
 `define OP_NORMAL           2'd1 // Normal operation
@@ -70,11 +72,7 @@
 `define SETMODE_AUTO_LUT_NO_DITHER         8'd6
 `define SETMODE_AUTO_LUT_BLUE_NOISE        8'd7
 
-//`define OUTPUT_16B
-
-// Define this to enable operation by default after reset
-// Used for debugging purpose only
-`define CSR_SELFBOOT
+`define OUTPUT_16B   // ED115OC1 is a 16-bit panel
 
 //`define DEFAULT_VFP         8'd10
 //`define DEFAULT_VSYNC       8'd1
@@ -112,19 +110,25 @@
 // `define DEFAULT_HBP         8'd2
 // `define DEFAULT_HACT        12'd468
 
-// Input resolution: 1280x960
+// ED115OC1 (2760x2070), 16-bit bus, 2x upscale.
+//
+// Input / VRAM state grid: 1280x960  (VESA standard mode, W*H = 9600*128)
+// Panel scan area:         2560x1920 (86% of the 2760x2070 physical panel)
+//
+// One scan step = one core word = 4 distinct pixels = 16 bit = 8 panel pixels,
+// so HACT is the same 320 on both sides.
 `define INPUT_HACT          12'd320
 `define INPUT_VACT          12'd960
 
-// E-ink Screen scan resolution: 2560x1920
-`define DEFAULT_VFP         8'd8
-`define DEFAULT_VSYNC       8'd8
-`define DEFAULT_VBP         8'd6
+`define DEFAULT_VFP         8'd4
+`define DEFAULT_VSYNC       8'd1
+`define DEFAULT_VBP         8'd2
 `define DEFAULT_VACT        12'd1920
-`define DEFAULT_HFP         8'd4
-`define DEFAULT_HSYNC       8'd16
-`define DEFAULT_HBP         8'd20
-`define DEFAULT_HACT        12'd640
+`define DEFAULT_HFP         8'd20   // GDCLK low pulse = 20 clk = 494 ns
+`define DEFAULT_HSYNC       8'd2
+`define DEFAULT_HBP         8'd2
+`define DEFAULT_HACT        12'd320
+// htotal 344 x vtotal 1927 = 662,888 clk/frame -> 60 Hz at 40.5 MHz
 
 // `define DEFAULT_VFP         8'd33
 // `define DEFAULT_VSYNC       8'd1
@@ -187,3 +191,5 @@
 
 `define DEFAULT_MODE        `INIT_FAST_MONO_BD
 `define INPUT_LVDS 
+
+`endif // GLIDER_DEFINES_VH

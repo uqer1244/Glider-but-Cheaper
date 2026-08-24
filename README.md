@@ -33,7 +33,7 @@ The original Glider board relies on a Xilinx Spartan-6 LX16 FPGA, external DDR3 
 
 ### Key Features
 - **Ultra-Low Latency**: Frame processing delay < 20 µs.
-- **Direct DVI/HDMI Input**: HDMI video input processed directly via onboard microHDMI port.
+- **Direct DVI/HDMI Input** *(phase 2, currently removed)*: the receiver has been taken out of the tree so the EPD output can be verified on its own. Pixels come from an internal test pattern until it is restored.
 - **128MB DDR3 Framebuffer**: Utilizes on-module DDR3 SDRAM for high-frame-rate rendering.
 - **Flexible Toolchain Support**: Works with official Gowin EDA as well as open-source toolchains (Yosys, nextpnr-himbaechel-gowin, Apicula).
 - **Verilator Simulation**: Includes a full visualizer-based simulation workspace using C++ and SDL2.
@@ -189,7 +189,7 @@ Flash the included precompiled bitstream (`bin/glider_tang.fs`) using `openFPGAL
 
 ### 주요 특징
 - **초저지연 디스플레이**: 20 µs 미만의 신호 처리 지연시간 구현.
-- **직접 DVI/HDMI 입력**: Tang Primer 20K Dock 보드의 내장 microHDMI 커넥터 지원.
+- **직접 DVI/HDMI 입력** *(2단계, 현재 제거됨)*: EPD 출력 검증에 집중하기 위해 수신부를 트리에서 제거했다. 복원 전까지 픽셀은 내부 테스트 패턴에서 나온다.
 - **128MB DDR3 프레임버퍼**: Core 보드 탑재 128MB DDR3 SDRAM을 활용한 고속 프레임 버퍼링.
 - **다양한 툴체인 지원**: 공식 Gowin EDA IDE 및 오픈소스 툴체인(Yosys, nextpnr-himbaechel-gowin, Apicula) 호환.
 - **Verilator 시뮬레이터 동봉**: C++ 및 SDL2 기반 화면 갱신 시각화 시뮬레이션 환경 제공.
