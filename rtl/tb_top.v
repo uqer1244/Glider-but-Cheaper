@@ -44,6 +44,11 @@ module tb_top;
     localparam integer HTOTAL = `DEFAULT_HFP + `DEFAULT_HSYNC + `DEFAULT_HBP + `DEFAULT_HACT;
     localparam integer ACTIVE = `DEFAULT_ACTIVE;
 
+    // Set by check_last_frame whenever SD[15:8] carried anything, and examined
+    // once at the end of the run. Declared here because check_last_frame reads
+    // it and iverilog requires the declaration to come first.
+    reg saw_sd_hi = 1'b0;
+
     // 40.5 MHz. sysclock.v bypasses the rPLL under SIMULATION and feeds CLK_IN
     // straight through, so this is the actual core clock in simulation.
     localparam real CLK_HALF = 12.346;
@@ -213,18 +218,36 @@ module tb_top;
             if (!uut.epd_selftest.pass) fail("epd_selftest did not pass");
 
             // epd_sd_check watches the data bus, which nothing else here looks
-            // at. Hardware reports U=ff Z=0000 D=0000; assert the same in
-            // simulation so a regression in the output stage is caught before
-            // it reaches a board.
+            // at. Z and D are structural invariants of the output stage and
+            // must hold on every frame whatever the picture is, so they are
+            // asserted here.
+            //
+            // U is not. It is the OR of SD[15:8] over one frame, so it depends
+            // on whether any pixel is being driven, and Caster stops driving a
+            // pixel once it reaches its target. With mig_wrapper.v still a
+            // single 128-bit loopback register rather than a memory, every
+            // pixel reads the same state word, so the whole field settles at
+            // once: frame 1 drives (U=aa) and later frames do not (U=00).
+            // Requiring U != 0 per frame would be asserting a property of the
+            // memory stub, not of the output stage. It is checked once at the
+            // end of the run instead -- see saw_sd_hi.
             $display("[TB]   sd_check: U=%02x Z=%0d D=%0d",
                      uut.epd_sd_check.sd_or_o, uut.epd_sd_check.hiz_cnt_o,
                      uut.epd_sd_check.dup_cnt_o);
-            if (uut.epd_sd_check.sd_or_o == 8'd0)
-                fail("SD[15:8] never asserted -- OUTPUT_16B not in effect");
+            if (uut.epd_sd_check.sd_or_o != 8'd0) saw_sd_hi = 1'b1;
             if (uut.epd_sd_check.hiz_cnt_o != 0)
                 fail("SD bus drove 2'b11 (Hi-Z) during the active window");
             if (uut.epd_sd_check.dup_cnt_o != 0)
                 fail("2x upscale duplication broken on the SD bus");
+
+            // Vertical half of the 2x upscale. Every odd line repeats the even
+            // line before it, so this holds regardless of the picture too.
+            $display("[TB]   line_dup: V=%0d L=%0d",
+                     uut.epd_line_dup.errs_o, uut.epd_line_dup.pairs_o);
+            if (uut.epd_line_dup.errs_o != 0)
+                fail("vertical 2x upscale: line pair mismatch");
+            if (uut.epd_line_dup.pairs_o != (`DEFAULT_VACT / 2))
+                fail("vertical 2x upscale: wrong number of line pairs");
         end
     endtask
 
@@ -317,6 +340,13 @@ module tb_top;
         end
 
         // ---- verdict ----
+        // Checked once for the whole run rather than per frame: see the note
+        // in check_last_frame. The point is that the top half of the bus is
+        // wired and does get driven at some point, not that it is busy on
+        // every frame.
+        if (!saw_sd_hi)
+            fail("SD[15:8] never asserted in any frame -- OUTPUT_16B not in effect");
+
         if (errors == 0)
             $display("[TB] PASS - front panel and EPD bus behave as specified");
         else

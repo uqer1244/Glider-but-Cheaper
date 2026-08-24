@@ -692,6 +692,8 @@ module top(
         .dup_cnt(sdchk_dup),
         .vpair_err(vdup_err),
         .vpair_cnt(vdup_pairs),
+        .pattern(dbg_pattern),
+        .mode_sel(dbg_mode_sel),
         .tx(UART_TX)
     );
 

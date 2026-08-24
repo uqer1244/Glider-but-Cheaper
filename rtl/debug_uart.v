@@ -4,7 +4,9 @@
 // debug_uart.v
 // Prints one fixed-width line of epd_selftest's counters per emitted frame.
 //
-//   G=787 S=787 A=096000 E=+000000 P=1 F=0 U=ff Z=0000 D=0000 V=0000 L=03c0
+//   G=787 S=787 A=096000 E=+000000 P=1 F=0 U=ff Z=0000 D=0000 V=0000 L=03c0 N=0 M=0
+//   |     |     |        |         |   |   |    |      |      |      |      |   `- mode
+//   |     |     |        |         |   |   |    |      |      |      |      `----- pattern
 //   |     |     |        |         |   |   |    |      |      |      `- line pairs
 //   |     |     |        |         |   |   |    |      |      `-------- pair misses
 //   |     |     |        |         |   |   |    |      `- upscale-wiring misses
@@ -24,6 +26,13 @@
 // epd_sd_check.v for what Z and D mean, and epd_line_dup.v for V and L.
 // L is the vertical half of the same story: 1920 panel lines is 960 pairs
 // (0x3c0), and V counts the pairs that did not match.
+//
+// N and M are the front panel's pattern and mode selection. They are here
+// because the LEDs cannot be trusted to report them: holding BTN2 hands the
+// whole LED row to the self-test readout, so the pattern index is not even
+// visible while the operator is pressing the button that changes it. Having
+// them in the log removes a step where a human reads six LEDs and reports
+// what they saw.
 //
 // Why hex and fixed width: no divider, no variable-length formatting, and the
 // line is diffable -- a changing field is visually obvious in a log.
@@ -50,11 +59,13 @@ module debug_uart #(
     input  wire [15:0] dup_cnt,
     input  wire [15:0] vpair_err,
     input  wire [15:0] vpair_cnt,
+    input  wire [1:0]  pattern,
+    input  wire [1:0]  mode_sel,
 
     output wire        tx
 );
 
-    localparam LINE_LEN = 72;
+    localparam LINE_LEN = 80;
 
     // ---- snapshot ----
     // Latched when a line starts so the fields cannot change mid-line and
@@ -67,6 +78,7 @@ module debug_uart #(
     reg [7:0]  s_sdor;
     reg [15:0] s_hiz, s_dup;
     reg [15:0] s_verr, s_vcnt;
+    reg [1:0]  s_pat, s_mode;
 
     reg [7:0]  frame_div;
     reg [6:0]  char_idx;   // LINE_LEN is 72, so 6 bits is not enough
@@ -155,7 +167,15 @@ module debug_uart #(
             7'd68: ch = hex(s_vcnt[11:8]);
             7'd69: ch = hex(s_vcnt[7:4]);
             7'd70: ch = hex(s_vcnt[3:0]);
-            7'd71: ch = 8'h0a;               // '\n'
+            7'd71: ch = " ";
+            7'd72: ch = "N";
+            7'd73: ch = "=";
+            7'd74: ch = hex({2'd0, s_pat});
+            7'd75: ch = " ";
+            7'd76: ch = "M";
+            7'd77: ch = "=";
+            7'd78: ch = hex({2'd0, s_mode});
+            7'd79: ch = 8'h0a;               // '\n'
             default: ch = " ";
         endcase
     end
@@ -184,6 +204,8 @@ module debug_uart #(
             s_dup     <= 16'd0;
             s_verr    <= 16'd0;
             s_vcnt    <= 16'd0;
+            s_pat     <= 2'd0;
+            s_mode    <= 2'd0;
         end
         else begin
             uart_load <= 1'b0;
@@ -208,6 +230,8 @@ module debug_uart #(
                         s_dup    <= dup_cnt;
                         s_verr   <= vpair_err;
                         s_vcnt   <= vpair_cnt;
+                        s_pat    <= pattern;
+                        s_mode   <= mode_sel;
                         sending  <= 1'b1;
                         char_idx <= 7'd0;
                     end
