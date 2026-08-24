@@ -612,6 +612,7 @@ module top(
     // validated with no logic analyser and no panel attached.
     wire selftest_pass;
     wire [1:0] selftest_fail;
+    wire verdict_pass;
     wire selftest_frame_done;
     wire [11:0] selftest_last_gdclk;
     wire [11:0] selftest_last_sdle;
@@ -635,8 +636,7 @@ module top(
         .last_gdclk_o(selftest_last_gdclk),
         .last_sdle_o(selftest_last_sdle),
         .last_active_o(selftest_last_active),
-        .err_o(selftest_err),
-        .led(selftest_led)
+        .err_o(selftest_err)
     );
 
     // Checks the data bus itself: epd_selftest only counts control edges and
@@ -671,6 +671,26 @@ module top(
         .errs_o(vdup_err)
     );
 
+    // One indicator for every check. Each checker used to report only over
+    // UART, which is no help at a bench or once the board is in a case.
+    wire [2:0] verdict_fail;
+    epd_verdict #(
+        .BLINK_DIV(25'd10_125_000),
+        .EXP_PAIRS(`DEFAULT_VACT / 2)
+    ) epd_verdict (
+        .clk(clk_epdc),
+        .rst(epdc_rst),
+        .st_pass(selftest_pass),
+        .st_fail(selftest_fail),
+        .hiz_cnt(sdchk_hiz),
+        .dup_cnt(sdchk_dup),
+        .vpair_err(vdup_err),
+        .vpair_cnt(vdup_pairs),
+        .pass(verdict_pass),
+        .fail_code(verdict_fail),
+        .led(selftest_led)
+    );
+
     // Every frame's counters go out of the dock's USB serial port as text.
     // The LED blink code says only which count is wrong; this says by how
     // much, which is the number needed to tell a timing error from a wiring
@@ -685,8 +705,8 @@ module top(
         .sdle_cnt(selftest_last_sdle),
         .active_cnt(selftest_last_active),
         .err(selftest_err),
-        .pass(selftest_pass),
-        .fail_code(selftest_fail),
+        .pass(verdict_pass),
+        .fail_code(verdict_fail),
         .sd_or(sdchk_or),
         .hiz_cnt(sdchk_hiz),
         .dup_cnt(sdchk_dup),

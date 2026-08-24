@@ -13,7 +13,11 @@
 // so the EPD bus can be verified with nothing but the on-board LED.
 //
 //   pass = 1            all three counts matched on the last complete frame
-//   pass = 0            led blinks a code: 1 = GDCLK, 2 = SDLE, 3 = SDCE0
+//   pass = 0            fail_code says which count: 1 = GDCLK, 2 = SDLE,
+//                       3 = SDCE0
+//
+// The blink code used to be generated here. It moved to epd_verdict.v once
+// there were other checks to report as well -- see that file.
 //
 // The frame boundary is taken from GDSP, which goes low for exactly the vsync
 // lines once per frame.
@@ -39,8 +43,7 @@ module epd_selftest #(
     output wire [11:0] last_gdclk_o,
     output wire [11:0] last_sdle_o,
     output wire [20:0] last_active_o,
-    output wire signed [21:0] err_o,
-    output wire       led          // ready to drive an active-low LED pin
+    output wire signed [21:0] err_o
 );
 
     reg gdsp_d, gdclk_d, sdle_d;
@@ -181,29 +184,6 @@ module epd_selftest #(
 
     wire [3:0] nib_val = err16 >> (nib_idx * 4);
     assign diag = {nib_idx, nib_val};
-
-    // ---- blink code ----
-    // Eight 0.25 s slots per 2 s cycle. Solid when passing, otherwise one
-    // pulse per fail_code in the first slots of each cycle.
-    reg [24:0] blink_div;
-    reg [2:0]  slot;
-    always @(posedge clk) begin
-        if (rst) begin
-            blink_div <= 25'd0;
-            slot      <= 3'd0;
-        end
-        else if (blink_div == BLINK_DIV - 1) begin
-            blink_div <= 25'd0;
-            slot      <= slot + 1'b1;
-        end
-        else begin
-            blink_div <= blink_div + 1'b1;
-        end
-    end
-
-    wire [3:0] pulse_slots = {2'b0, fail_code} << 1; // 1->2, 2->4, 3->6
-    assign led = pass ? 1'b1
-                      : (({1'b0, slot} < pulse_slots) && !slot[0]);
 
 endmodule
 `default_nettype wire

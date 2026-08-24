@@ -248,6 +248,14 @@ module tb_top;
                 fail("vertical 2x upscale: line pair mismatch");
             if (uut.epd_line_dup.pairs_o != (`DEFAULT_VACT / 2))
                 fail("vertical 2x upscale: wrong number of line pairs");
+
+            // epd_verdict is what LED1 actually shows, so it is the thing an
+            // operator at a bench trusts. Check it agrees with the individual
+            // results above rather than assuming the folding is right.
+            $display("[TB]   verdict: pass=%0d fail_code=%0d",
+                     uut.epd_verdict.pass, uut.epd_verdict.fail_code);
+            if (!uut.epd_verdict.pass)
+                fail("epd_verdict reports a failure");
         end
     endtask
 

@@ -13,6 +13,8 @@
 //   |     |     |        |         |   |   |    `-------- Hi-Z (2'b11) cycles
 //   |     |     |        |         |   |   `------------- OR of SD[15:8]
 //   |     |     |        |         |   `----------------- fail_code, 0 = passing
+//                                          (1 gdclk 2 sdle 3 sdce0 4 sd-bus
+//                                           5 vertical; see epd_verdict.v)
 //   |     |     |        |         `--------------------- pass
 //   |     |     |        `------------------------------- active_cnt - EXP_ACTIVE
 //   |     |     `--------------------------------------- SDCE0 active-window cycles
@@ -53,7 +55,7 @@ module debug_uart #(
     input  wire [20:0] active_cnt,
     input  wire signed [21:0] err,
     input  wire        pass,
-    input  wire [1:0]  fail_code,
+    input  wire [2:0]  fail_code,
     input  wire [7:0]  sd_or,
     input  wire [15:0] hiz_cnt,
     input  wire [15:0] dup_cnt,
@@ -74,7 +76,7 @@ module debug_uart #(
     reg [20:0] s_active;
     reg [23:0] s_errmag;
     reg        s_errneg, s_pass;
-    reg [1:0]  s_fail;
+    reg [2:0]  s_fail;
     reg [7:0]  s_sdor;
     reg [15:0] s_hiz, s_dup;
     reg [15:0] s_verr, s_vcnt;
@@ -133,7 +135,7 @@ module debug_uart #(
             7'd34: ch = " ";
             7'd35: ch = "F";
             7'd36: ch = "=";
-            7'd37: ch = hex({2'd0, s_fail});
+            7'd37: ch = hex({1'd0, s_fail});
             7'd38: ch = " ";
             7'd39: ch = "U";
             7'd40: ch = "=";
@@ -198,7 +200,7 @@ module debug_uart #(
             s_errmag  <= 24'd0;
             s_errneg  <= 1'b0;
             s_pass    <= 1'b0;
-            s_fail    <= 2'd0;
+            s_fail    <= 3'd0;
             s_sdor    <= 8'd0;
             s_hiz     <= 16'd0;
             s_dup     <= 16'd0;

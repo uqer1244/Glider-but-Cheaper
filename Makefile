@@ -12,6 +12,7 @@ SRCS        = $(RTL_DIR)/top.v \
               $(RTL_DIR)/debug_uart.v \
               $(RTL_DIR)/epd_sd_check.v \
               $(RTL_DIR)/epd_line_dup.v \
+              $(RTL_DIR)/epd_verdict.v \
               $(RTL_DIR)/uart_tx.v \
               $(RTL_DIR)/csr_master.v \
               $(RTL_DIR)/pixel_processing.v \
@@ -93,6 +94,6 @@ simulation: $(SRCS) $(TB_SRC)
 # Note: this removes the root glider_tang.fs as well. bin/glider_tang.fs is the
 # tracked copy and is left alone, so `make program_bin` still works afterwards.
 clean:
-	rm -f *.json *.fs $(SIM_TARGET) sim_nodump $(WAVE_FILE)
+	rm -f *.json *.fs $(SIM_TARGET) sim_nodump sim_mem sim_demo $(WAVE_FILE)
 
 .PHONY: all program flash program_bin flash_bin clean simulation demo
