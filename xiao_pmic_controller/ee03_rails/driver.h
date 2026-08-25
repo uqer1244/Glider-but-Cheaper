@@ -17,4 +17,11 @@
 #define IT8951_PANEL_WIDTH  2760
 #define IT8951_PANEL_HEIGHT 2070
 
+// The library ends up at 40 MHz here, which is past what the IT8951's SPI
+// slave will take -- the part is generally run at 12 to 24 MHz. At 40 MHz the
+// TCON answers with zeros, which is exactly what the first bring-up saw.
+// Start slow; once it talks, this can be raised to find the real ceiling.
+#define SPI_FREQUENCY       10000000
+#define SPI_READ_FREQUENCY  10000000
+
 #endif

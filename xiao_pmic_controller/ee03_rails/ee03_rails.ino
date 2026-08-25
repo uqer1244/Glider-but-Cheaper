@@ -88,6 +88,37 @@ static void i2c_scan() {
 // serial port, so it is invisible here. Read the device info directly instead.
 // A live IT8951 reports its panel geometry and firmware strings; a dead SPI
 // link reports zeros or 0xFFFF.
+// Two headers define these: Setup511 (written for the 10.3" board) and
+// EPaper_Board_Pins_Setups.h (for EE03). They disagree -- TFT_CS D7 vs 44,
+// TFT_DC 10 vs -1 -- so print what the compiler actually settled on rather
+// than reasoning about include order.
+static void report_pins() {
+  Serial.println("Effective pin macros:");
+  Serial.print("  TFT_SCLK "); Serial.println(TFT_SCLK);
+  Serial.print("  TFT_MISO "); Serial.println(TFT_MISO);
+  Serial.print("  TFT_MOSI "); Serial.println(TFT_MOSI);
+  Serial.print("  TFT_CS   "); Serial.println(TFT_CS);
+  Serial.print("  TFT_RST  "); Serial.println(TFT_RST);
+  Serial.print("  TFT_BUSY "); Serial.println(TFT_BUSY);
+#ifdef TFT_DC
+  Serial.print("  TFT_DC   "); Serial.println(TFT_DC);
+#endif
+#ifdef TFT_ENABLE
+  Serial.print("  TFT_ENABLE "); Serial.println(TFT_ENABLE);
+#endif
+#ifdef SPI_FREQUENCY
+  Serial.print("  SPI_FREQUENCY "); Serial.println(SPI_FREQUENCY);
+#else
+  Serial.println("  SPI_FREQUENCY (library default)");
+#endif
+  Serial.print("  ED103TC2_DRIVER ");
+#ifdef ED103TC2_DRIVER
+  Serial.println("yes");
+#else
+  Serial.println("NO -- the IT8951 driver was not selected!");
+#endif
+}
+
 static bool report_tcon() {
   uint16_t w = tft._gstI80DevInfo.usPanelW;
   uint16_t h = tft._gstI80DevInfo.usPanelH;
@@ -188,6 +219,8 @@ void loop() {
   else if (in.equalsIgnoreCase("info")) {
     // Everything setup() prints, on demand. The native USB port re-enumerates
     // on reset, so boot output is usually gone before a terminal reconnects.
+    report_pins();
+    Serial.println();
     i2c_scan();
     Serial.println();
     Serial.print("HRDY/BUSY pin (GPIO"); Serial.print(TFT_BUSY);
