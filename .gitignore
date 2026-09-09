@@ -23,7 +23,8 @@ sim_mem
 sim_demo
 
 # Arduino Build Artifacts
-xiao_pmic_controller/build/
+xiao_pmic/build/
+ee03_probe/build/
 
 # OS & Editor Artifacts
 .DS_Store

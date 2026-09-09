@@ -34,13 +34,19 @@ The original Glider board relies on a Xilinx Spartan-6 LX16 FPGA, external DDR3 
 > bus is **not** exposed on the XIAO's own I2C pins — schematic-confirmed, the
 > PMIC's `SCL`/`SDA` sit on a separate bus that only the onboard IT8951 TCON
 > masters. Driving the PMIC therefore means going through the TCON
-> (see `xiao_pmic/`, sets VCOM to -1.31V over SPI) — there is no way around it
-> without soldering to test points. If the TCON itself is dead, as ours turned
-> out to be after a full day of bring-up (see `Glider_but_cheaper/PROGRESS.md`),
-> the fallback is an external MCU wired directly to three PMIC test points
-> (`ITE_I2C_SCL`/`SDA`, `WAKEUP`) plus a fourth pad (`VCOM_CTRL`, no test point,
-> soldered to a resistor pad) — no `PWRUP` wire needed, since the PMIC's
-> `ENABLE` register has an `ACTIVE` bit that does the same job over I2C.
+> (see `xiao_pmic/`) — there is no way around it without soldering to test
+> points. An earlier revision of this README reported that TCON as dead.
+> **It was not.** The chip had been answering all along; the transport was
+> skipping the HRDY wait the IT8951 requires after the read preamble, and an
+> ungated read returns plausible garbage rather than zeros
+> (`docs/PROGRESS.md` §1.19). With the wait in place the board sets VCOM,
+> raises the rails and holds them — which is all the FPGA needs from it.
+> Panel rendering through the TCON is confirmed on real hardware.
+>
+> The fallback, never used and no longer needed, is an external MCU wired to
+> three PMIC test points (`ITE_I2C_SCL`/`SDA` at `TP42`/`TP43`, `WAKEUP`) plus
+> a fourth pad (`VCOM_CTRL`) — no `PWRUP` wire, since the PMIC's `ENABLE`
+> register has an `ACTIVE` bit that does the same job over I2C.
 
 ### Key Features
 - **Ultra-Low Latency**: Frame processing delay < 20 µs (once DDR3 is wired up; see Verification Status).
@@ -71,22 +77,26 @@ Glider_but_cheaper/
 │   ├── mig_wrapper.v            # DDR3: synthesis stub / real memory model under SIMULATION
 │   └── mulib/                   # Memory & sync utility primitives
 ├── sim/                         # Verilator + SDL2 visual simulation workspace
-├── xiao_pmic/                   # Arduino sketch: drives the PMIC via the IT8951 TCON over SPI
-├── plan.md                      # Design plan: architecture, risks, milestones
-├── PROGRESS.md                  # Session-by-session bring-up log and current status
+├── xiao_pmic/                   # Arduino sketch: EE03 as the PMIC (rails for the FPGA)
+├── ee03_probe/                  # Arduino sketch: read-only survey of an EE03 board
+├── docs/
+│   ├── plan.md                  # Design plan: architecture, risks, milestones
+│   ├── PROGRESS.md              # Session-by-session bring-up log and current status
+│   ├── HANDOVER.md              # Session handover snapshot
+│   └── WIRING.md                # EE03 power harness + FPGA pin map for the panel
 ├── Makefile                     # Main Makefile for building & flashing
 ├── glider_tang.gprj             # Gowin EDA Project file
 ├── LICENSE                      # CERN-OHL-P v2 License
 └── README.md                    # Project documentation
 ```
 
-> **Start here for current status**: `PROGRESS.md` is the up-to-date record of what has been verified on real hardware and what hasn't. This README describes the design; `PROGRESS.md` describes where the bring-up actually stands.
+> **Start here for current status**: `docs/PROGRESS.md` is the up-to-date record of what has been verified on real hardware and what hasn't. This README describes the design; `docs/PROGRESS.md` describes where the bring-up actually stands.
 
 ---
 
 ### Hardware Requirements
 1. **Sipeed Tang Primer 20K Core Board & Dock Baseboard**
-2. **E-ink Screen**: Parallel interface E-ink panel (project targets ED115OC1, 2760x2070, driven at 2x horizontal/vertical upscale — see `plan.md` for why)
+2. **E-ink Screen**: Parallel interface E-ink panel (project targets ED115OC1, 2760x2070, driven at 2x horizontal/vertical upscale — see `docs/plan.md` for why)
 3. **PMIC Power Supply**: TPS651851 PMIC producing E-ink high voltages (+15V, -15V, VGH, VGL, VCOM). *(e.g., Seeed Studio XIAO ePaper EE03 board — its IT8951 TCON is the only verified path to the PMIC's I2C bus; see the PMIC note above)*
 4. **PMIC Controller Board**: A Seeed XIAO (ESP32S3) on the EE03 board runs `xiao_pmic/`. If the EE03's own TCON is dead, an external 3.3V MCU wired directly to the PMIC's test points is the fallback (see PMIC note above).
 
@@ -147,9 +157,49 @@ Glider_but_cheaper/
 | **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 Pin 1) |
 | **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 Pin 2) |
 
+#### 6. Panel Connector (40P-A) Wiring — FPGA signals + EE03 power rails
+
+The panel side of the breakout follows the **Glider 40P-A pinout** (verified against
+the J1 pad-net list of `pcb/40p-adapter-ab/adapter.kicad_pcb`; ED115OC1 is a 40P-A
+panel). Power comes from the EE03 board's own 40-pin connector, and the two
+power maps do line up: +15V is on **pin 36** on both, 37 is a no-connect on
+both, and EE03's pin 40 reaches VCOM through `R60`. An earlier revision of this
+README had 36 and 37 swapped — corrected against the PCB netlist
+(`docs/PROGRESS.md` §1.18). The one difference is pin 34: NC on the panel, but
+EE03 drives +3V3 there. Do not use it as a ground return.
+
+| Panel pin | Signal | Source |
+|--:| :--- | :--- |
+| 1 | VGL (−20V) | EE03 pin 1 |
+| 2 / 4 / 35 / 37 / 39 | NC | — (EE03 pin 37 is a no-connect too) |
+| 34 | NC on the panel | ⚠️ EE03 drives **+3V3** here through `R121`. Not a ground return. |
+| 3 | VGH (+22V) | EE03 pin 3 |
+| 5 / 11 | +3V3 (source driver logic) | EE03 pins 5, 11 |
+| 6 | GDOE (= panel MODE) | PMOD2 pin 3 (`B14`) |
+| 7 | GDCLK (= CKV) | PMOD2 pin 4 (`A15`) |
+| 8 | GDSP (= SPV) | PMOD2 pin 1 (`D14`) |
+| 9 / 12 / 22 | GND | EE03 pins 9, 12, 22 — **common with FPGA GND**, several strands |
+| 10 | VCOM | EE03 pin 10 |
+| 13 | SDCLK (= XCL) | PMOD2 pin 2 (`E15`) |
+| 14–21 | ED0–ED7 | PMOD1: EPD_SD[0..7] (`T12 T11 P11 R11 M15 M14 J16 J14`) |
+| 23–30 | ED8–ED15 | PMOD0: EPD_SD[8..15] (`R8 T6 P6 T7 P8 T8 T9 P9`) |
+| 31 | SDCE0 (= XSTL) | PMOD2 pin 7 (`B13`) |
+| 32 | SDLE (= XLE) | PMOD2 pin 9 (`B12`) |
+| 33 | SDOE (= XOE) | PMOD2 pin 10 (`C12`) |
+| 36 | +VP (+15V) | EE03 pin 36 (`VDPS_OUT`, PCB netlist verified) |
+| 38 | −VN (−15V) | EE03 pin 38 |
+| 40 | tied to VCOM | EE03 pin 40 reaches VCOM through `R60` (0R, fitted) — same net |
+
+> The panel FPC must never be plugged into the EE03 board itself **while the
+> FPGA is connected** — its IT8951 drives the same bus. With the FPGA absent it
+> is exactly how the panel was first lit, which is worth doing: it gives you a
+> known-good rendering of your own panel to compare the FPGA's output against.
+> Full harness, operating order and protection notes: **`docs/WIRING.md`**.
+> Firmware for the EE03 side: **`xiao_pmic/`**.
+
 ---
 
-### Verification Status (see `PROGRESS.md` for the full log)
+### Verification Status (see `docs/PROGRESS.md` for the full log)
 
 Everything below has been checked against real hardware, not just simulation:
 
@@ -163,8 +213,12 @@ Everything below has been checked against real hardware, not just simulation:
 | Clock is actually 40.5 MHz, not just self-consistent counts | Frame-rate measured at 59.96 fps over 20s → 40.472 MHz implied, -0.07% |
 | Pattern/mode switching reaches the output stage | `FAST_GREY` mode produces a distinct `U=55` bus signature vs. `U=ff`/`00` for other modes |
 | `make demo` (PANEL_TEST, DDR3-free bring-up path) | Passes the same checks: `U=ff Z=0 D=0 V=0 L=960` |
+| IT8951 TCON alive and addressable | HRDY releases 1605 ms after reset, `GET_DEV_INFO` returns 1872x1404, FW `Seeed_v.0.1`, LUT `3M29T` |
+| PMIC rails come up, and stay up | Measured at the test points. They persist for as long as the TCON is left in SYS_RUN, so the board can hold power for the FPGA |
+| Rail values are inside the panel's operating range | The ED115OC1 renders when driven by the EE03's own TCON — see `xiao_pmic/` |
+| VCOM is volatile and must be rewritten every power-up | Reads back 2500 mV after every reset; written to 1310 mV and verified before anything drives the glass |
 
-**Not yet verified**: actual pixel content on the SD bus (checks above are structural, not content), panel SDCLK ceiling (no public datasheet for the target panel — see `plan.md`), PMIC rail voltages, and anything past the FPGA — DDR3 hardware path and HDMI input are both phase 2, not started.
+**Not yet verified**: actual pixel content on the SD bus (checks above are structural, not content), panel SDCLK ceiling (no public datasheet for the target panel — see `docs/plan.md`), the FPGA driving the panel at all (the harness in `docs/WIRING.md` is not built yet), and anything past the FPGA — DDR3 hardware path and HDMI input are both phase 2, not started.
 
 ---
 
@@ -242,12 +296,17 @@ Flash the included precompiled bitstream (`bin/glider_tang.fs`) using `openFPGAL
 > *XIAO ePaper Display Board EE03*의 TPS651851 PMIC에서 나온다. 회로도로 확인한
 > 결과 **PMIC의 I2C 버스는 XIAO 자신의 I2C 핀에 노출되어 있지 않다** — PMIC의
 > SCL/SDA는 온보드 IT8951 TCON이 마스터인 별도 버스에 있다. 따라서 PMIC를
-> 제어하려면 TCON을 거쳐야 하고(`xiao_pmic/`, SPI로 VCOM을 −1.31V로 설정),
-> 테스트포인트에 직접 납땜하지 않는 이상 다른 경로가 없다. 만약 TCON 자체가
-> 죽었다면 — 실제로 하루 종일 브링업한 끝에 그렇다고 확정됐다
-> (`Glider_but_cheaper/PROGRESS.md` 참고) — 대안은 외부 MCU를 PMIC 테스트포인트
-> 3개(`ITE_I2C_SCL`/`SDA`, `WAKEUP`)와 저항 패드 1개(`VCOM_CTRL`, 테스트포인트
-> 없음)에 직결하는 것뿐이다. `PWRUP` 배선은 필요 없다 — PMIC의 `ENABLE`
+> 제어하려면 TCON을 거쳐야 하고(`xiao_pmic/`),
+> 테스트포인트에 직접 납땜하지 않는 이상 다른 경로가 없다. 이 README의 이전
+> 판본은 그 TCON이 죽었다고 적었다. **아니었다.** 칩은 계속 응답하고 있었고,
+> 원인은 IT8951이 read preamble 뒤에 요구하는 HRDY 대기를 전송 코드가 건너뛴
+> 것이었다. 게이팅 없는 읽기는 0이 아니라 **그럴듯한 쓰레기**를 준다
+> (`docs/PROGRESS.md` §1.19). 대기를 넣자 VCOM 설정도, 레일 기동·유지도 된다 —
+> FPGA가 이 보드에 원하는 건 그게 전부다.
+>
+> 아직 쓰지 않았고 이제 필요도 없어진 대안은, 외부 MCU를 PMIC 테스트포인트
+> 3개(`ITE_I2C_SCL`/`SDA` = `TP42`/`TP43`, `WAKEUP`)와 저항 패드 1개
+> (`VCOM_CTRL`)에 직결하는 것이다. `PWRUP` 배선은 필요 없다 — PMIC의 `ENABLE`
 > 레지스터에 `ACTIVE` 비트가 있어서 I2C로 같은 일을 할 수 있다.
 
 ### 주요 특징
@@ -279,24 +338,28 @@ Glider_but_cheaper/
 │   ├── mig_wrapper.v             # DDR3: 합성용 스텁 / SIMULATION 시 실제 메모리 모델
 │   └── mulib/                    # 메모리 및 동기화 유틸리티 모듈
 ├── sim/                          # Verilator + SDL2 시각 시뮬레이션 워크스페이스
-├── xiao_pmic/                    # IT8951 TCON을 SPI로 시켜 PMIC를 구동하는 아두이노 스케치
-├── plan.md                       # 설계 계획서: 아키텍처, 리스크, 마일스톤
-├── PROGRESS.md                   # 세션별 브링업 기록과 현재 상태
+├── xiao_pmic/                    # EE03를 PMIC로 쓰는 아두이노 스케치 (FPGA용 레일 유지)
+├── ee03_probe/                   # EE03 보드를 읽기 전용으로 진단하는 아두이노 스케치
+├── docs/
+│   ├── plan.md                   # 설계 계획서: 아키텍처, 리스크, 마일스톤
+│   ├── PROGRESS.md               # 세션별 브링업 기록과 현재 상태
+│   ├── HANDOVER.md               # 세션 인수인계 스냅샷
+│   └── WIRING.md                 # EE03 전원 하니스 + 패널용 FPGA 핀맵
 ├── Makefile                      # 전체 프로젝트 빌드 및 업로드 메인 Makefile
 ├── glider_tang.gprj              # Gowin EDA 프로젝트 파일
 ├── LICENSE                       # CERN-OHL-P v2 라이선스
 └── README.md                     # 프로젝트 문서
 ```
 
-> **현재 상태는 `PROGRESS.md`부터 보세요**: 실물 하드웨어로 검증된 것과 아직 안 된
+> **현재 상태는 `docs/PROGRESS.md`부터 보세요**: 실물 하드웨어로 검증된 것과 아직 안 된
 > 것이 최신 상태로 기록돼 있습니다. 이 README는 설계를 설명하고,
-> `PROGRESS.md`는 브링업이 실제로 어디까지 왔는지 설명합니다.
+> `docs/PROGRESS.md`는 브링업이 실제로 어디까지 왔는지 설명합니다.
 
 ---
 
 ### 하드웨어 준비물
 1. **Sipeed Tang Primer 20K Core Board & Dock Baseboard**
-2. **E-ink 스크린**: 병렬 인터페이스 지원 EPD 패널 (프로젝트 목표는 ED115OC1, 2760x2070, 가로·세로 2배 확대 구동 — 이유는 `plan.md` 참고)
+2. **E-ink 스크린**: 병렬 인터페이스 지원 EPD 패널 (프로젝트 목표는 ED115OC1, 2760x2070, 가로·세로 2배 확대 구동 — 이유는 `docs/plan.md` 참고)
 3. **PMIC 전원 모듈**: TPS651851 기반 E-ink 고전압(+15V, -15V, VGH, VGL, VCOM) 생성 모듈 *(예: Seeed Studio XIAO ePaper EE03 보드 — 그 보드의 IT8951 TCON이 PMIC의 I2C 버스에 접근하는 유일한 검증된 경로다. 위 PMIC 참고 항목 확인)*
 4. **PMIC 제어용 MCU**: EE03 위의 Seeed XIAO(ESP32S3)가 `xiao_pmic/`를 실행한다. EE03 자체 TCON이 죽었다면, PMIC 테스트포인트에 직결한 별도 3.3V MCU가 대안이다 (위 PMIC 참고 항목 확인).
 
@@ -361,9 +424,47 @@ Glider_but_cheaper/
 | **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 Pin 1) |
 | **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 Pin 2) |
 
+#### 6. 패널 커넥터(40P-A) 배선 — FPGA 신호 + EE03 전원
+
+브레이크아웃의 패널 측은 **Glider 40P-A 핀맵**을 따른다
+(`pcb/40p-adapter-ab/adapter.kicad_pcb` J1 패드-넷 리스트로 검증. ED115OC1은 40P-A).
+전원은 EE03 보드의 40핀 커넥터에서 가져오고, **전원 핀맵은 서로 일치한다** —
++15V는 양쪽 다 **36번**, 37번은 양쪽 다 NC, EE03의 40번도 `R60`(0R) 경유로 VCOM에
+닿는다. 이 README의 이전 판본은 36과 37을 뒤바꿔 적었다 — PCB 넷리스트로 정정했다
+(`docs/PROGRESS.md` §1.18). 유일한 차이는 34번이다: 패널은 NC인데 EE03는 여기에
++3V3을 준다. **접지 리턴으로 쓰지 말 것.**
+
+| 패널 핀 | 신호 | 연결처 |
+|--:| :--- | :--- |
+| 1 | VGL (−20V) | EE03 핀 1 |
+| 2 / 4 / 35 / 37 / 39 | NC | — (EE03도 37번은 NC) |
+| 34 | 패널쪽 NC | ⚠️ EE03는 `R121` 경유로 여기에 **+3V3**을 준다. 접지 리턴 금지 |
+| 3 | VGH (+22V) | EE03 핀 3 |
+| 5 / 11 | +3V3 (소스드라이버 로직) | EE03 핀 5, 11 |
+| 6 | GDOE (=패널 MODE) | PMOD2 Pin 3 (`B14`) |
+| 7 | GDCLK (=CKV) | PMOD2 Pin 4 (`A15`) |
+| 8 | GDSP (=SPV) | PMOD2 Pin 1 (`D14`) |
+| 9 / 12 / 22 | GND | EE03 핀 9, 12, 22 — **FPGA GND와 공통 필수**, 여러 가닥으로 |
+| 10 | VCOM | EE03 핀 10 |
+| 13 | SDCLK (=XCL) | PMOD2 Pin 2 (`E15`) |
+| 14–21 | ED0–ED7 | PMOD1: EPD_SD[0..7] (`T12 T11 P11 R11 M15 M14 J16 J14`) |
+| 23–30 | ED8–ED15 | PMOD0: EPD_SD[8..15] (`R8 T6 P6 T7 P8 T8 T9 P9`) |
+| 31 | SDCE0 (=XSTL) | PMOD2 Pin 7 (`B13`) |
+| 32 | SDLE (=XLE) | PMOD2 Pin 9 (`B12`) |
+| 33 | SDOE (=XOE) | PMOD2 Pin 10 (`C12`) |
+| 36 | +VP (+15V) | EE03 핀 36 (`VDPS_OUT`, PCB 넷리스트 검증) |
+| 38 | −VN (−15V) | EE03 핀 38 |
+| 40 | VCOM에 결선 | EE03 핀 40도 `R60`(0R, 실장) 경유 VCOM — 같은 넷 |
+
+> **FPGA가 연결된 상태에서는** 패널 FPC를 EE03 보드에 직접 꽂지 말 것 — 보드의
+> IT8951이 같은 버스를 구동한다. FPGA가 없을 때는 오히려 그렇게 첫 점등을 했고,
+> 해볼 가치가 있다: 내 패널의 정상 렌더링을 확보해 두면 나중에 FPGA 출력과
+> 비교할 기준이 된다. 하니스·운용 순서·보호 회로는 **`docs/WIRING.md`**,
+> EE03 쪽 펌웨어는 **`xiao_pmic/`**.
+
 ---
 
-### 검증 현황 (전체 기록은 `PROGRESS.md` 참고)
+### 검증 현황 (전체 기록은 `docs/PROGRESS.md` 참고)
 
 아래는 시뮬레이션이 아니라 **실물 하드웨어로 확인된 것들**이다:
 
@@ -378,7 +479,12 @@ Glider_but_cheaper/
 | 패턴/모드 전환이 출력단까지 도달함 | `FAST_GREY` 모드에서 `U=55`라는 고유 서명, 다른 모드의 `U=ff`/`00`와 구분됨 |
 | `make demo`(PANEL_TEST, DDR3 없이 가는 브링업 경로) | 위와 동일 검사 통과: `U=ff Z=0 D=0 V=0 L=960` |
 
-**아직 검증 안 된 것**: SD 버스에 실린 실제 픽셀 값(위 검사들은 전부 구조적 성질만 봄, 내용은 안 봄), 패널 SDCLK 상한(대상 패널 데이터시트 공개본 없음 — `plan.md` 참고), PMIC 레일 전압, FPGA 이후 전부 — DDR3 하드웨어 경로와 HDMI 입력은 둘 다 2단계, 아직 착수 전.
+| IT8951 TCON이 살아 있고 응답함 | 리셋 후 1605 ms에 HRDY 해제, `GET_DEV_INFO`가 1872×1404 / FW `Seeed_v.0.1` / LUT `3M29T` 반환 |
+| PMIC 레일이 올라오고, **유지된다** | 테스트포인트 실측. TCON을 SYS_RUN에 두는 한 계속 살아 있어서 FPGA용 전원으로 붙들어 둘 수 있다 |
+| 레일 값이 패널 동작 범위 안 | EE03 자체 TCON으로 구동했을 때 ED115OC1이 실제로 그려진다 — `xiao_pmic/` 참고 |
+| VCOM은 휘발성이라 매 파워업마다 다시 써야 함 | 리셋할 때마다 2500 mV로 돌아옴. 1310 mV로 쓰고 검증한 뒤에만 유리에 전압을 건다 |
+
+**아직 검증 안 된 것**: SD 버스에 실린 실제 픽셀 값(위 검사들은 전부 구조적 성질만 봄, 내용은 안 봄), 패널 SDCLK 상한(대상 패널 데이터시트 공개본 없음 — `docs/plan.md` 참고), **FPGA가 패널을 실제로 구동하는 것**(`docs/WIRING.md`의 하니스가 아직 안 만들어졌다), FPGA 이후 전부 — DDR3 하드웨어 경로와 HDMI 입력은 둘 다 2단계, 아직 착수 전.
 
 ---
 

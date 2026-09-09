@@ -1,27 +1,22 @@
 #ifndef DRIVER_H
 #define DRIVER_H
 
-// Same board and controller as Seeed_GFX's ED115OC1_Test example. The screen
-// combo selects the IT8951 driver; the resolution overrides below match the
-// panel this project drives.
-//
-// Nothing here draws to the panel. The FPGA does that. This sketch exists only
-// to bring the PMIC rails up with the right VCOM and prove the SPI link works.
-#define BOARD_SCREEN_COMBO 511
-#define USE_XIAO_EPAPER_DISPLAY_BOARD_EE03
+// Pin map only -- lifted from ee03_probe/driver.h, which took it from
+// Seeed_GFX's User_Setups/EPaper_Board_Pins_Setups.h, EE03 branch.
+// Nothing here pulls in Seeed_GFX: this sketch talks to the IT8951 directly
+// so that the exact framing that was proven on this board (PROGRESS.md 1.19)
+// is the framing that runs, with no library layer to re-debug.
 
-#define TFT_WIDTH  2760
-#define TFT_HEIGHT 2070
-#define EPD_WIDTH  2760
-#define EPD_HEIGHT 2070
-#define IT8951_PANEL_WIDTH  2760
-#define IT8951_PANEL_HEIGHT 2070
+#define TFT_SCLK   D8
+#define TFT_MISO   D9
+#define TFT_MOSI   D10
+#define TFT_CS     44   // D7
+#define TFT_BUSY   4    // D3   -- IT8951 HRDY, active high = ready
+#define TFT_RST    38   // D11  -- IT8951 reset, active low
+#define TFT_ENABLE 43   // PWR_EN: logic rail AND the PMIC's VIN load switch
 
-// The library ends up at 40 MHz here, which is past what the IT8951's SPI
-// slave will take -- the part is generally run at 12 to 24 MHz. At 40 MHz the
-// TCON answers with zeros, which is exactly what the first bring-up saw.
-// Start slow; once it talks, this can be raised to find the real ceiling.
-#define SPI_FREQUENCY       10000000
-#define SPI_READ_FREQUENCY  10000000
+// EE03's I2C (SHT40 only -- the PMIC is NOT on this bus, PROGRESS.md 1.13)
+#define EE03_SDA   42
+#define EE03_SCL   41
 
 #endif
