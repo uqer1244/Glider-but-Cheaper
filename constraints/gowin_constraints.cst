@@ -172,7 +172,8 @@ IO_PORT "EPD_SD[14]" IO_TYPE=LVCMOS33;
 IO_LOC "EPD_SD[15]" P9;
 IO_PORT "EPD_SD[15]" IO_TYPE=LVCMOS33;
 
-// SPI (PMOD3 Pins 3, 4, 1, 2)
+// SPI (PMOD3, top two rows of the dock's silk legend:
+//  A11|B11 = MOSI|MISO, N6|D11 = CS|SCK)
 IO_LOC "SPI_CS" N6;
 IO_PORT "SPI_CS" IO_TYPE=LVCMOS33;
 IO_LOC "SPI_SCK" D11;
@@ -182,9 +183,12 @@ IO_PORT "SPI_MOSI" IO_TYPE=LVCMOS33;
 IO_LOC "SPI_MISO" B11;
 IO_PORT "SPI_MISO" IO_TYPE=LVCMOS33;
 
-// Handshake (PMOD3 Pin 7).
-// PMIC_READY (was N7) is intentionally not constrained: the XIAO asserts it
+// Handshake (PMOD3 row 3 left on the silk legend; N7 beside it is row 3 right).
+// PMIC_READY (was N7) is intentionally not constrained: the XIAO asserted it
 // unconditionally, so the port was removed and BTN0 is the drive gate instead.
+// Pin numbers are deliberately absent throughout this file: the dock's silk
+// prints the ball name next to every pad, and the "PMODn pin k" numbering that
+// used to be quoted in the docs did not match that legend. Wire by ball name.
 IO_LOC "REFRESH_DONE" N9;
 IO_PORT "REFRESH_DONE" IO_TYPE=LVCMOS33;
 

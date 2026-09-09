@@ -98,42 +98,58 @@ Glider_but_cheaper/
 1. **Sipeed Tang Primer 20K Core Board & Dock Baseboard**
 2. **E-ink Screen**: Parallel interface E-ink panel (project targets ED115OC1, 2760x2070, driven at 2x horizontal/vertical upscale — see `docs/plan.md` for why)
 3. **PMIC Power Supply**: TPS651851 PMIC producing E-ink high voltages (+15V, -15V, VGH, VGL, VCOM). *(e.g., Seeed Studio XIAO ePaper EE03 board — its IT8951 TCON is the only verified path to the PMIC's I2C bus; see the PMIC note above)*
-4. **PMIC Controller Board**: A Seeed XIAO (ESP32S3) on the EE03 board runs `xiao_pmic/`. If the EE03's own TCON is dead, an external 3.3V MCU wired directly to the PMIC's test points is the fallback (see PMIC note above).
+4. **PMIC Controller Board**: A Seeed XIAO (ESP32S3) on the EE03 board runs `xiao_pmic/`, which raises the rails and holds them. Should that TCON ever fail, an external 3.3V MCU wired to the PMIC's test points is the fallback (see PMIC note above) — untried, and not currently needed.
 
 ---
 
 ### Pin Mapping Guide (Dock Board PMOD Connectors)
 
+> **Wire by ball name, not by pin number.** The dock's back-side silk prints a
+> legend for every PMOD with the ball name next to each pad — four signal rows,
+> then GND, then 3V3. Positions below are given as that legend reads
+> (row 1–4, left/right column). Every assignment here was checked pad-by-pad
+> against `constraints/gowin_constraints.cst` and a photo of the board on
+> 2026-09-09: all 88 non-DDR pins match. An earlier revision quoted
+> "PMODn pin k" numbers that do **not** line up with the legend — counting pins
+> from those would have mis-wired the bus.
+>
+> ```
+> PMOD0  T6|P6   R8|T7   T8|P8   P9|T9   GND|GND  3V3|3V3
+> PMOD1  T11|P11 T12|R11 M14|M15 J14|J16 GND|GND  3V3|3V3
+> PMOD2  D14|E15 B14|A15 B13|A14 B12|C12 GND|GND  3V3|3V3
+> PMOD3  A11|B11 N6|D11  N9|N7   L9|N8   GND|GND  3V3|3V3
+> ```
+
 #### 1. EPD Parallel Control Interface (PMOD2)
 | Signal Name | FPGA Pin | Description |
 | :--- | :--- | :--- |
-| **EPD_GDOE** | `B14` | Gate Driver Output Enable (PMOD2 Pin 3) |
-| **EPD_GDCLK**| `A15` | Gate Driver Clock (PMOD2 Pin 4) |
-| **EPD_GDSP** | `D14` | Gate Driver Start Pulse (PMOD2 Pin 1) |
-| **EPD_SDCLK**| `E15` | Source Driver Clock (PMOD2 Pin 2) |
-| **EPD_SDLE** | `B12` | Source Driver Latch Enable (PMOD2 Pin 9) |
-| **EPD_SDOE** | `C12` | Source Driver Output Enable (PMOD2 Pin 10) |
-| **EPD_SDCE0**| `B13` | Source Driver Chip Enable 0 (PMOD2 Pin 7) |
+| **EPD_GDOE** | `B14` | Gate Driver Output Enable (PMOD2 row 2 left) |
+| **EPD_GDCLK**| `A15` | Gate Driver Clock (PMOD2 row 2 right) |
+| **EPD_GDSP** | `D14` | Gate Driver Start Pulse (PMOD2 row 1 left) |
+| **EPD_SDCLK**| `E15` | Source Driver Clock (PMOD2 row 1 right) |
+| **EPD_SDLE** | `B12` | Source Driver Latch Enable (PMOD2 row 4 left) |
+| **EPD_SDOE** | `C12` | Source Driver Output Enable (PMOD2 row 4 right) |
+| **EPD_SDCE0**| `B13` | Source Driver Chip Enable 0 (PMOD2 row 3 left) |
 
 #### 2. EPD Parallel Data Interface (PMOD0 & PMOD1)
 | Signal Name | FPGA Pin | Description |
 | :--- | :--- | :--- |
-| **EPD_SD[0]**| `T12` | Source Data Bit 0 (PMOD1 Pin 3) |
-| **EPD_SD[1]**| `T11` | Source Data Bit 1 (PMOD1 Pin 1) |
-| **EPD_SD[2]**| `P11` | Source Data Bit 2 (PMOD1 Pin 2) |
-| **EPD_SD[3]**| `R11` | Source Data Bit 3 (PMOD1 Pin 4) |
-| **EPD_SD[4]**| `M15` | Source Data Bit 4 (PMOD1 Pin 8) |
-| **EPD_SD[5]**| `M14` | Source Data Bit 5 (PMOD1 Pin 7) |
-| **EPD_SD[6]**| `J16` | Source Data Bit 6 (PMOD1 Pin 10) |
-| **EPD_SD[7]**| `J14` | Source Data Bit 7 (PMOD1 Pin 9) |
-| **EPD_SD[8]**| `R8`  | Source Data Bit 8 (PMOD0 Pin 3) |
-| **EPD_SD[9]**| `T6`  | Source Data Bit 9 (PMOD0 Pin 1) |
-| **EPD_SD[10]**| `P6` | Source Data Bit 10 (PMOD0 Pin 2) |
-| **EPD_SD[11]**| `T7` | Source Data Bit 11 (PMOD0 Pin 4) |
-| **EPD_SD[12]**| `P8` | Source Data Bit 12 (PMOD0 Pin 8) |
-| **EPD_SD[13]**| `T8` | Source Data Bit 13 (PMOD0 Pin 7) |
-| **EPD_SD[14]**| `T9` | Source Data Bit 14 (PMOD0 Pin 10) |
-| **EPD_SD[15]**| `P9` | Source Data Bit 15 (PMOD0 Pin 9) |
+| **EPD_SD[0]**| `T12` | Source Data Bit 0 (PMOD1 row 2 left) |
+| **EPD_SD[1]**| `T11` | Source Data Bit 1 (PMOD1 row 1 left) |
+| **EPD_SD[2]**| `P11` | Source Data Bit 2 (PMOD1 row 1 right) |
+| **EPD_SD[3]**| `R11` | Source Data Bit 3 (PMOD1 row 2 right) |
+| **EPD_SD[4]**| `M15` | Source Data Bit 4 (PMOD1 row 3 right) |
+| **EPD_SD[5]**| `M14` | Source Data Bit 5 (PMOD1 row 3 left) |
+| **EPD_SD[6]**| `J16` | Source Data Bit 6 (PMOD1 row 4 right) |
+| **EPD_SD[7]**| `J14` | Source Data Bit 7 (PMOD1 row 4 left) |
+| **EPD_SD[8]**| `R8`  | Source Data Bit 8 (PMOD0 row 2 left) |
+| **EPD_SD[9]**| `T6`  | Source Data Bit 9 (PMOD0 row 1 left) |
+| **EPD_SD[10]**| `P6` | Source Data Bit 10 (PMOD0 row 1 right) |
+| **EPD_SD[11]**| `T7` | Source Data Bit 11 (PMOD0 row 2 right) |
+| **EPD_SD[12]**| `P8` | Source Data Bit 12 (PMOD0 row 3 right) |
+| **EPD_SD[13]**| `T8` | Source Data Bit 13 (PMOD0 row 3 left) |
+| **EPD_SD[14]**| `T9` | Source Data Bit 14 (PMOD0 row 4 right) |
+| **EPD_SD[15]**| `P9` | Source Data Bit 15 (PMOD0 row 4 left) |
 
 #### 3. Status Output
 | Signal Name | FPGA Pin | Direction | Description |
@@ -149,13 +165,13 @@ Glider_but_cheaper/
 | **BTN_N[0..4]** | `T10` `T3` `T2` `D7` `C7` | BTN0 = drive-enable gate. BTN1 = manual frame step. BTN2 = pattern select. BTN3 (held) = mode select. BTN4 = FREERUN toggle. |
 | **LED[0..5]** | `C13` `A13` `N16` `N14` `L14` `L16` | LED0 heartbeat, LED1 self-test verdict (see `epd_verdict.v`), LED2 drive-enable, LED3 FREERUN, LED5:4 pattern/mode index. |
 
-#### 5. CSR SPI Host Interface (PMOD3 Pins 1, 2, 3, 4)
+#### 5. CSR SPI Host Interface (PMOD3, top two rows)
 | Signal Name | FPGA Pin | Description |
 | :--- | :--- | :--- |
-| **SPI_CS**   | `N6`  | Chip Select (PMOD3 Pin 3) |
-| **SPI_SCK**  | `D11` | SPI Clock (PMOD3 Pin 4) |
-| **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 Pin 1) |
-| **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 Pin 2) |
+| **SPI_CS**   | `N6`  | Chip Select (PMOD3 row 2 left) |
+| **SPI_SCK**  | `D11` | SPI Clock (PMOD3 row 2 right) |
+| **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 row 1 left) |
+| **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 row 1 right) |
 
 #### 6. Panel Connector (40P-A) Wiring — FPGA signals + EE03 power rails
 
@@ -175,17 +191,17 @@ EE03 drives +3V3 there. Do not use it as a ground return.
 | 34 | NC on the panel | ⚠️ EE03 drives **+3V3** here through `R121`. Not a ground return. |
 | 3 | VGH (+22V) | EE03 pin 3 |
 | 5 / 11 | +3V3 (source driver logic) | EE03 pins 5, 11 |
-| 6 | GDOE (= panel MODE) | PMOD2 pin 3 (`B14`) |
-| 7 | GDCLK (= CKV) | PMOD2 pin 4 (`A15`) |
-| 8 | GDSP (= SPV) | PMOD2 pin 1 (`D14`) |
+| 6 | GDOE (= panel MODE) | PMOD2 row 2 left (`B14`) |
+| 7 | GDCLK (= CKV) | PMOD2 row 2 right (`A15`) |
+| 8 | GDSP (= SPV) | PMOD2 row 1 left (`D14`) |
 | 9 / 12 / 22 | GND | EE03 pins 9, 12, 22 — **common with FPGA GND**, several strands |
 | 10 | VCOM | EE03 pin 10 |
-| 13 | SDCLK (= XCL) | PMOD2 pin 2 (`E15`) |
+| 13 | SDCLK (= XCL) | PMOD2 row 1 right (`E15`) |
 | 14–21 | ED0–ED7 | PMOD1: EPD_SD[0..7] (`T12 T11 P11 R11 M15 M14 J16 J14`) |
 | 23–30 | ED8–ED15 | PMOD0: EPD_SD[8..15] (`R8 T6 P6 T7 P8 T8 T9 P9`) |
-| 31 | SDCE0 (= XSTL) | PMOD2 pin 7 (`B13`) |
-| 32 | SDLE (= XLE) | PMOD2 pin 9 (`B12`) |
-| 33 | SDOE (= XOE) | PMOD2 pin 10 (`C12`) |
+| 31 | SDCE0 (= XSTL) | PMOD2 row 3 left (`B13`) |
+| 32 | SDLE (= XLE) | PMOD2 row 4 left (`B12`) |
+| 33 | SDOE (= XOE) | PMOD2 row 4 right (`C12`) |
 | 36 | +VP (+15V) | EE03 pin 36 (`VDPS_OUT`, PCB netlist verified) |
 | 38 | −VN (−15V) | EE03 pin 38 |
 | 40 | tied to VCOM | EE03 pin 40 reaches VCOM through `R60` (0R, fitted) — same net |
@@ -361,42 +377,56 @@ Glider_but_cheaper/
 1. **Sipeed Tang Primer 20K Core Board & Dock Baseboard**
 2. **E-ink 스크린**: 병렬 인터페이스 지원 EPD 패널 (프로젝트 목표는 ED115OC1, 2760x2070, 가로·세로 2배 확대 구동 — 이유는 `docs/plan.md` 참고)
 3. **PMIC 전원 모듈**: TPS651851 기반 E-ink 고전압(+15V, -15V, VGH, VGL, VCOM) 생성 모듈 *(예: Seeed Studio XIAO ePaper EE03 보드 — 그 보드의 IT8951 TCON이 PMIC의 I2C 버스에 접근하는 유일한 검증된 경로다. 위 PMIC 참고 항목 확인)*
-4. **PMIC 제어용 MCU**: EE03 위의 Seeed XIAO(ESP32S3)가 `xiao_pmic/`를 실행한다. EE03 자체 TCON이 죽었다면, PMIC 테스트포인트에 직결한 별도 3.3V MCU가 대안이다 (위 PMIC 참고 항목 확인).
+4. **PMIC 제어용 MCU**: EE03 위의 Seeed XIAO(ESP32S3)가 `xiao_pmic/`를 실행해 레일을 올리고 유지한다. 혹시 그 TCON이 고장 나면 PMIC 테스트포인트에 직결한 별도 3.3V MCU가 대안이다(위 PMIC 참고 항목) — 아직 써본 적 없고, 지금은 필요도 없다.
 
 ---
 
 ### 핀 맵핑 가이드 (Dock 보드 PMOD 커넥터 연결)
 
+> **핀 번호가 아니라 볼 이름으로 배선할 것.** 도크 뒷면 실크에 PMOD별 legend가
+> 인쇄돼 있고 패드마다 볼 이름이 적혀 있다 — 신호 4행, 그 다음 GND, 3V3 순이다.
+> 아래 위치는 그 legend 기준(1~4행, 좌/우 열)이다. 2026-09-09에 보드 실물 사진과
+> `constraints/gowin_constraints.cst`를 패드 단위로 전수 대조했고, **비-DDR 88핀
+> 전부 일치**한다. 이전 판본이 적어둔 "PMODn pin k" 번호는 legend와 **맞지 않는다** —
+> 그 번호를 세서 배선했다면 버스를 잘못 꽂았을 것이다.
+>
+> ```
+> PMOD0  T6|P6   R8|T7   T8|P8   P9|T9   GND|GND  3V3|3V3
+> PMOD1  T11|P11 T12|R11 M14|M15 J14|J16 GND|GND  3V3|3V3
+> PMOD2  D14|E15 B14|A15 B13|A14 B12|C12 GND|GND  3V3|3V3
+> PMOD3  A11|B11 N6|D11  N9|N7   L9|N8   GND|GND  3V3|3V3
+> ```
+
 #### 1. EPD 병렬 제어 인터페이스 (PMOD2)
 | 신호 이름 | FPGA 핀번호 | 설명 |
 | :--- | :--- | :--- |
-| **EPD_GDOE** | `B14` | Gate Driver Output Enable (PMOD2 Pin 3) |
-| **EPD_GDCLK**| `A15` | Gate Driver Clock (PMOD2 Pin 4) |
-| **EPD_GDSP** | `D14` | Gate Driver Start Pulse (PMOD2 Pin 1) |
-| **EPD_SDCLK**| `E15` | Source Driver Clock (PMOD2 Pin 2) |
-| **EPD_SDLE** | `B12` | Source Driver Latch Enable (PMOD2 Pin 9) |
-| **EPD_SDOE** | `C12` | Source Driver Output Enable (PMOD2 Pin 10) |
-| **EPD_SDCE0**| `B13` | Source Driver Chip Enable 0 (PMOD2 Pin 7) |
+| **EPD_GDOE** | `B14` | Gate Driver Output Enable (PMOD2 row 2 left) |
+| **EPD_GDCLK**| `A15` | Gate Driver Clock (PMOD2 row 2 right) |
+| **EPD_GDSP** | `D14` | Gate Driver Start Pulse (PMOD2 row 1 left) |
+| **EPD_SDCLK**| `E15` | Source Driver Clock (PMOD2 row 1 right) |
+| **EPD_SDLE** | `B12` | Source Driver Latch Enable (PMOD2 row 4 left) |
+| **EPD_SDOE** | `C12` | Source Driver Output Enable (PMOD2 row 4 right) |
+| **EPD_SDCE0**| `B13` | Source Driver Chip Enable 0 (PMOD2 row 3 left) |
 
 #### 2. EPD 병렬 데이터 인터페이스 (PMOD0 & PMOD1)
 | 신호 이름 | FPGA 핀번호 | 설명 |
 | :--- | :--- | :--- |
-| **EPD_SD[0]**| `T12` | Source Data Bit 0 (PMOD1 Pin 3) |
-| **EPD_SD[1]**| `T11` | Source Data Bit 1 (PMOD1 Pin 1) |
-| **EPD_SD[2]**| `P11` | Source Data Bit 2 (PMOD1 Pin 2) |
-| **EPD_SD[3]**| `R11` | Source Data Bit 3 (PMOD1 Pin 4) |
-| **EPD_SD[4]**| `M15` | Source Data Bit 4 (PMOD1 Pin 8) |
-| **EPD_SD[5]**| `M14` | Source Data Bit 5 (PMOD1 Pin 7) |
-| **EPD_SD[6]**| `J16` | Source Data Bit 6 (PMOD1 Pin 10) |
-| **EPD_SD[7]**| `J14` | Source Data Bit 7 (PMOD1 Pin 9) |
-| **EPD_SD[8]**| `R8`  | Source Data Bit 8 (PMOD0 Pin 3) |
-| **EPD_SD[9]**| `T6`  | Source Data Bit 9 (PMOD0 Pin 1) |
-| **EPD_SD[10]**| `P6` | Source Data Bit 10 (PMOD0 Pin 2) |
-| **EPD_SD[11]**| `T7` | Source Data Bit 11 (PMOD0 Pin 4) |
-| **EPD_SD[12]**| `P8` | Source Data Bit 12 (PMOD0 Pin 8) |
-| **EPD_SD[13]**| `T8` | Source Data Bit 13 (PMOD0 Pin 7) |
-| **EPD_SD[14]**| `T9` | Source Data Bit 14 (PMOD0 Pin 10) |
-| **EPD_SD[15]**| `P9` | Source Data Bit 15 (PMOD0 Pin 9) |
+| **EPD_SD[0]**| `T12` | Source Data Bit 0 (PMOD1 row 2 left) |
+| **EPD_SD[1]**| `T11` | Source Data Bit 1 (PMOD1 row 1 left) |
+| **EPD_SD[2]**| `P11` | Source Data Bit 2 (PMOD1 row 1 right) |
+| **EPD_SD[3]**| `R11` | Source Data Bit 3 (PMOD1 row 2 right) |
+| **EPD_SD[4]**| `M15` | Source Data Bit 4 (PMOD1 row 3 right) |
+| **EPD_SD[5]**| `M14` | Source Data Bit 5 (PMOD1 row 3 left) |
+| **EPD_SD[6]**| `J16` | Source Data Bit 6 (PMOD1 row 4 right) |
+| **EPD_SD[7]**| `J14` | Source Data Bit 7 (PMOD1 row 4 left) |
+| **EPD_SD[8]**| `R8`  | Source Data Bit 8 (PMOD0 row 2 left) |
+| **EPD_SD[9]**| `T6`  | Source Data Bit 9 (PMOD0 row 1 left) |
+| **EPD_SD[10]**| `P6` | Source Data Bit 10 (PMOD0 row 1 right) |
+| **EPD_SD[11]**| `T7` | Source Data Bit 11 (PMOD0 row 2 right) |
+| **EPD_SD[12]**| `P8` | Source Data Bit 12 (PMOD0 row 3 right) |
+| **EPD_SD[13]**| `T8` | Source Data Bit 13 (PMOD0 row 3 left) |
+| **EPD_SD[14]**| `T9` | Source Data Bit 14 (PMOD0 row 4 right) |
+| **EPD_SD[15]**| `P9` | Source Data Bit 15 (PMOD0 row 4 left) |
 
 #### 3. 상태 출력
 | 신호 이름 | FPGA 핀번호 | 방향 | 설명 |
@@ -416,13 +446,13 @@ Glider_but_cheaper/
 | **BTN_N[0..4]** | `T10` `T3` `T2` `D7` `C7` | BTN0=구동 게이트, BTN1=수동 프레임 스텝, BTN2=패턴 선택, BTN3(홀드)=모드 선택, BTN4=FREERUN 토글 |
 | **LED[0..5]** | `C13` `A13` `N16` `N14` `L14` `L16` | LED0 하트비트, LED1 셀프테스트 판정(`epd_verdict.v` 참고), LED2 구동 게이트, LED3 FREERUN, LED5:4 패턴/모드 인덱스 |
 
-#### 5. CSR SPI 통신 인터페이스 (PMOD3 Pins 1, 2, 3, 4)
+#### 5. CSR SPI 통신 인터페이스 (PMOD3 상단 두 행)
 | 신호 이름 | FPGA 핀번호 | 설명 |
 | :--- | :--- | :--- |
-| **SPI_CS**   | `N6`  | Chip Select (PMOD3 Pin 3) |
-| **SPI_SCK**  | `D11` | SPI Clock (PMOD3 Pin 4) |
-| **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 Pin 1) |
-| **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 Pin 2) |
+| **SPI_CS**   | `N6`  | Chip Select (PMOD3 row 2 left) |
+| **SPI_SCK**  | `D11` | SPI Clock (PMOD3 row 2 right) |
+| **SPI_MOSI** | `A11` | Master Out Slave In (PMOD3 row 1 left) |
+| **SPI_MISO** | `B11` | Master In Slave Out (PMOD3 row 1 right) |
 
 #### 6. 패널 커넥터(40P-A) 배선 — FPGA 신호 + EE03 전원
 
@@ -441,17 +471,17 @@ Glider_but_cheaper/
 | 34 | 패널쪽 NC | ⚠️ EE03는 `R121` 경유로 여기에 **+3V3**을 준다. 접지 리턴 금지 |
 | 3 | VGH (+22V) | EE03 핀 3 |
 | 5 / 11 | +3V3 (소스드라이버 로직) | EE03 핀 5, 11 |
-| 6 | GDOE (=패널 MODE) | PMOD2 Pin 3 (`B14`) |
-| 7 | GDCLK (=CKV) | PMOD2 Pin 4 (`A15`) |
-| 8 | GDSP (=SPV) | PMOD2 Pin 1 (`D14`) |
+| 6 | GDOE (=패널 MODE) | PMOD2 2행 좌 (`B14`) |
+| 7 | GDCLK (=CKV) | PMOD2 2행 우 (`A15`) |
+| 8 | GDSP (=SPV) | PMOD2 1행 좌 (`D14`) |
 | 9 / 12 / 22 | GND | EE03 핀 9, 12, 22 — **FPGA GND와 공통 필수**, 여러 가닥으로 |
 | 10 | VCOM | EE03 핀 10 |
-| 13 | SDCLK (=XCL) | PMOD2 Pin 2 (`E15`) |
+| 13 | SDCLK (=XCL) | PMOD2 1행 우 (`E15`) |
 | 14–21 | ED0–ED7 | PMOD1: EPD_SD[0..7] (`T12 T11 P11 R11 M15 M14 J16 J14`) |
 | 23–30 | ED8–ED15 | PMOD0: EPD_SD[8..15] (`R8 T6 P6 T7 P8 T8 T9 P9`) |
-| 31 | SDCE0 (=XSTL) | PMOD2 Pin 7 (`B13`) |
-| 32 | SDLE (=XLE) | PMOD2 Pin 9 (`B12`) |
-| 33 | SDOE (=XOE) | PMOD2 Pin 10 (`C12`) |
+| 31 | SDCE0 (=XSTL) | PMOD2 3행 좌 (`B13`) |
+| 32 | SDLE (=XLE) | PMOD2 4행 좌 (`B12`) |
+| 33 | SDOE (=XOE) | PMOD2 4행 우 (`C12`) |
 | 36 | +VP (+15V) | EE03 핀 36 (`VDPS_OUT`, PCB 넷리스트 검증) |
 | 38 | −VN (−15V) | EE03 핀 38 |
 | 40 | VCOM에 결선 | EE03 핀 40도 `R60`(0R, 실장) 경유 VCOM — 같은 넷 |
