@@ -83,7 +83,8 @@ Glider_but_cheaper/
 │   ├── plan.md                  # Design plan: architecture, risks, milestones
 │   ├── PROGRESS.md              # Session-by-session bring-up log and current status
 │   ├── HANDOVER.md              # Session handover snapshot
-│   └── WIRING.md                # EE03 power harness + FPGA pin map for the panel
+│   ├── WIRING.md                # EE03 power harness, grounding, operating order
+│   └── BREAKOUT_40P.md          # Panel pin 1..40 wiring sheet (EE03 vs FPGA)
 ├── Makefile                     # Main Makefile for building & flashing
 ├── glider_tang.gprj             # Gowin EDA Project file
 ├── LICENSE                      # CERN-OHL-P v2 License
@@ -210,7 +211,8 @@ EE03 drives +3V3 there. Do not use it as a ground return.
 > FPGA is connected** — its IT8951 drives the same bus. With the FPGA absent it
 > is exactly how the panel was first lit, which is worth doing: it gives you a
 > known-good rendering of your own panel to compare the FPGA's output against.
-> Full harness, operating order and protection notes: **`docs/WIRING.md`**.
+> Pin-by-pin sheet: **`docs/BREAKOUT_40P.md`**. Harness, grounding, operating
+> order and protection notes: **`docs/WIRING.md`**.
 > Firmware for the EE03 side: **`xiao_pmic/`**.
 
 ---
@@ -229,6 +231,8 @@ Everything below has been checked against real hardware, not just simulation:
 | Clock is actually 40.5 MHz, not just self-consistent counts | Frame-rate measured at 59.96 fps over 20s → 40.472 MHz implied, -0.07% |
 | Pattern/mode switching reaches the output stage | `FAST_GREY` mode produces a distinct `U=55` bus signature vs. `U=ff`/`00` for other modes |
 | `make demo` (PANEL_TEST, DDR3-free bring-up path) | Passes the same checks: `U=ff Z=0 D=0 V=0 L=960` |
+| Bitstream built from source in this repo runs on real hardware | P&R + `openFPGALoader`, self-test clean across 1203 consecutive frames |
+| Frame rate is 60.00 fps | One UART line per frame (`DECIMATE=1`), 1203 lines in 20.05 s |
 | IT8951 TCON alive and addressable | HRDY releases 1605 ms after reset, `GET_DEV_INFO` returns 1872x1404, FW `Seeed_v.0.1`, LUT `3M29T` |
 | PMIC rails come up, and stay up | Measured at the test points. They persist for as long as the TCON is left in SYS_RUN, so the board can hold power for the FPGA |
 | Rail values are inside the panel's operating range | The ED115OC1 renders when driven by the EE03's own TCON — see `xiao_pmic/` |
@@ -360,7 +364,8 @@ Glider_but_cheaper/
 │   ├── plan.md                   # 설계 계획서: 아키텍처, 리스크, 마일스톤
 │   ├── PROGRESS.md               # 세션별 브링업 기록과 현재 상태
 │   ├── HANDOVER.md               # 세션 인수인계 스냅샷
-│   └── WIRING.md                 # EE03 전원 하니스 + 패널용 FPGA 핀맵
+│   ├── WIRING.md                 # EE03 전원 하니스 · 접지 · 운용 순서
+│   └── BREAKOUT_40P.md           # 패널 1~40번 핀 배선 시트 (EE03 / FPGA 구분)
 ├── Makefile                      # 전체 프로젝트 빌드 및 업로드 메인 Makefile
 ├── glider_tang.gprj              # Gowin EDA 프로젝트 파일
 ├── LICENSE                       # CERN-OHL-P v2 라이선스
@@ -489,7 +494,8 @@ Glider_but_cheaper/
 > **FPGA가 연결된 상태에서는** 패널 FPC를 EE03 보드에 직접 꽂지 말 것 — 보드의
 > IT8951이 같은 버스를 구동한다. FPGA가 없을 때는 오히려 그렇게 첫 점등을 했고,
 > 해볼 가치가 있다: 내 패널의 정상 렌더링을 확보해 두면 나중에 FPGA 출력과
-> 비교할 기준이 된다. 하니스·운용 순서·보호 회로는 **`docs/WIRING.md`**,
+> 비교할 기준이 된다. 핀별 배선 시트는 **`docs/BREAKOUT_40P.md`**,
+> 하니스·접지·운용 순서·보호 회로는 **`docs/WIRING.md`**,
 > EE03 쪽 펌웨어는 **`xiao_pmic/`**.
 
 ---
@@ -509,6 +515,8 @@ Glider_but_cheaper/
 | 패턴/모드 전환이 출력단까지 도달함 | `FAST_GREY` 모드에서 `U=55`라는 고유 서명, 다른 모드의 `U=ff`/`00`와 구분됨 |
 | `make demo`(PANEL_TEST, DDR3 없이 가는 브링업 경로) | 위와 동일 검사 통과: `U=ff Z=0 D=0 V=0 L=960` |
 
+| 이 저장소에서 소스로 빌드한 비트스트림이 실물에서 동작 | P&R + `openFPGALoader`, 1203프레임 연속 셀프테스트 무결 |
+| 프레임레이트 60.00 fps | 프레임마다 UART 한 줄(`DECIMATE=1`), 20.05초에 1203줄 |
 | IT8951 TCON이 살아 있고 응답함 | 리셋 후 1605 ms에 HRDY 해제, `GET_DEV_INFO`가 1872×1404 / FW `Seeed_v.0.1` / LUT `3M29T` 반환 |
 | PMIC 레일이 올라오고, **유지된다** | 테스트포인트 실측. TCON을 SYS_RUN에 두는 한 계속 살아 있어서 FPGA용 전원으로 붙들어 둘 수 있다 |
 | 레일 값이 패널 동작 범위 안 | EE03 자체 TCON으로 구동했을 때 ED115OC1이 실제로 그려진다 — `xiao_pmic/` 참고 |

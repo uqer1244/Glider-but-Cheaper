@@ -696,7 +696,11 @@ module top(
     // much, which is the number needed to tell a timing error from a wiring
     // error. Costs one pin that nothing else uses.
     debug_uart #(
-        .DECIMATE(15)               // 4 lines/s at 60 Hz
+        // One line per frame. 39 bytes = 3.4 ms at 115200, frames arrive every
+        // 16.7 ms, so it fits with room to spare. Set higher only if a live
+        // terminal needs to stay readable; single-frame stepping needs this at
+        // 1, or a stepped frame prints nothing at all.
+        .DECIMATE(1)
     ) debug_uart (
         .clk(clk_epdc),
         .rst(epdc_rst),

@@ -57,8 +57,15 @@ demo:
 
 
 # 2. Place & Route via nextpnr-himbaechel
+#
+# --freq is not optional. Without it nextpnr assumes 12 MHz, reports
+# "PASS at 12.00 MHz" and stops optimising -- so the 40.5 MHz the panel scan
+# actually runs at was never being asked for, and whether a build met it was
+# luck (2026-09-10). The design is one clock domain: sysclock's rPLL makes
+# 40.5 MHz and clk_sys / clk_epdc / clk_ddr are all that net.
+PNR_FREQ ?= 40.5
 $(TARGET).pnr.json: $(TARGET).json $(CST_FILE)
-	python3 -c "import sys, yowasp_nextpnr_himbaechel_gowin; sys.exit(yowasp_nextpnr_himbaechel_gowin.run_nextpnr_himbaechel_gowin(sys.argv[1:]))" --json $(TARGET).json --write $(TARGET).pnr.json --device $(DEVICE) --vopt family=$(FAMILY) --vopt cst=$(CST_FILE)
+	python3 -c "import sys, yowasp_nextpnr_himbaechel_gowin; sys.exit(yowasp_nextpnr_himbaechel_gowin.run_nextpnr_himbaechel_gowin(sys.argv[1:]))" --json $(TARGET).json --write $(TARGET).pnr.json --device $(DEVICE) --freq $(PNR_FREQ) --vopt family=$(FAMILY) --vopt cst=$(CST_FILE)
 
 # 3. Bitstream generation via Apicula (gowin_pack)
 $(TARGET).fs: $(TARGET).pnr.json
